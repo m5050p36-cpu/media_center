@@ -1,4 +1,4 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase/supabase.dart';
 import '../models/profile_model.dart';
 import 'supabase_service.dart';
 
@@ -8,7 +8,6 @@ class AuthService {
   User? get currentUser => _client.auth.currentUser;
   bool get isGuest => _client.auth.currentUser == null;
 
-  /// تسجيل الدخول بالبريد وكلمة المرور
   Future<AuthResponse> signInWithEmail(String email, String password) async {
     return await _client.auth.signInWithPassword(
       email: email.trim(),
@@ -16,7 +15,6 @@ class AuthService {
     );
   }
 
-  /// إنشاء حساب جديد بالبريد وكلمة المرور
   Future<AuthResponse> signUpWithEmail(
       String email, String password, String fullName) async {
     return await _client.auth.signUp(
@@ -26,7 +24,6 @@ class AuthService {
     );
   }
 
-  /// إرسال رابط استعادة كلمة المرور
   Future<void> resetPassword(String email) async {
     await _client.auth.resetPasswordForEmail(email.trim());
   }

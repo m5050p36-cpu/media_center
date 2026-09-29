@@ -1,8 +1,21 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase/supabase.dart';
 import '../models/banner_model.dart';
+import '../supabase_config.dart';
 
 class SupabaseService {
-  static SupabaseClient get client => Supabase.instance.client;
+  SupabaseService._();
+  static final SupabaseService _instance = SupabaseService._();
+  factory SupabaseService() => _instance;
+
+  static late final SupabaseClient client;
+
+  /// يجب استدعاؤها في main() قبل أي استخدام
+  static Future<void> initialize() async {
+    client = SupabaseClient(
+      SupabaseConfig.supabaseUrl,
+      SupabaseConfig.supabaseAnonKey,
+    );
+  }
 
   // ══════ Banners ══════
   Future<List<BannerModel>> fetchActiveBanners() async {

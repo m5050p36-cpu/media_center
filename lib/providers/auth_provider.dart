@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase/supabase.dart';
 import '../models/profile_model.dart';
 import '../services/auth_service.dart';
 import '../services/supabase_service.dart';
@@ -16,9 +16,19 @@ class AuthProvider extends ChangeNotifier {
     _init();
   }
 
-  void _init() {
-    SupabaseService.client.auth.onAuthStateChange.listen((event) async {
-      if (event.session != null) {
+  Future<void> _init() async {
+    // جلسة موجودة مسبقاً؟
+    final existingSession = SupabaseService.client.auth.currentSession;
+    if (existingSession != null) {
+      isGuest = false;
+      await _loadProfile();
+      notifyListeners();
+    }
+
+    // متابعة تغيرات المصادقة
+    SupabaseService.client.auth.onAuthStateChange.listen((data) async {
+      final session = data.session;
+      if (session != null) {
         isGuest = false;
         await _loadProfile();
       } else {

@@ -10,18 +10,20 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  supabase_flutter: ^2.8.0
+
+  # ═══ Supabase (low-level — بدون app_links) ═══
+  supabase: ^2.6.0
+
+  # ═══ باقي الحزم ═══
   provider: ^6.1.2
   just_audio: ^0.9.42
   audio_video_progress_bar: ^2.0.3
   video_player: ^2.9.2
-  # ═══ تمت إزالة cached_network_image لحل تعارض app_links ═══
-  # cached_network_image: ^3.4.1
+  cached_network_image: ^3.4.1
   url_launcher: ^6.3.1
   file_picker: ^8.1.6
   path_provider: ^2.1.5
   permission_handler: ^11.3.1
-  shared_preferences: ^2.3.3
   carousel_slider: ^5.0.0
   google_fonts: ^6.2.1
   rxdart: ^0.28.0
@@ -30,12 +32,6 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
-
-# ═══════════════════════════════════════════════════════
-# إصلاح تعارض app_links مع Gradle 8.14+ / AGP 8.11.1
-# ═══════════════════════════════════════════════════════
-dependency_overrides:
-  app_links: 5.0.0
 
 flutter:
   uses-material-design: true
