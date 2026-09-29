@@ -33,16 +33,18 @@ jobs:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
 
-      # ─── 3) تهيئة أحدث Flutter مستقر ───
+      # ─── 3) تهيئة Flutter ───
       - name: 🐦 Setup Flutter (latest stable)
         uses: subosito/flutter-action@v2
         with:
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
-      # ─── 4) عرض إصدار Flutter ───
-      - name: ℹ️ Flutter Version
-        run: flutter --version
+      # ─── 4) عرض الإصدارات ───
+      - name: ℹ️ Versions
+        run: |
+          flutter --version
+          java -version
 
       # ─── 5) كاش الحزم ───
       - name: 💾 Cache pub packages
@@ -61,12 +63,12 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
         continue-on-error: true
 
-      # ─── 8) تجهيز NDK + CMake ───
-      - name: 🛠️ Install NDK + CMake
+      # ─── 8) تجهيز NDK 28.2 + CMake ───
+      - name: 🛠️ Install NDK 28.2 + CMake
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
-            "ndk;27.0.12077973" \
+            "ndk;28.2.13676358" \
             "cmake;3.22.1" \
             "platforms;android-36" \
             "build-tools;34.0.0" || true
@@ -82,14 +84,17 @@ jobs:
           keyAlias=${{ secrets.KEY_ALIAS }}
           storeFile=keys/release-key.jks
           EOF2
+          echo "─── التحقق ───"
           ls -lh android/keys/
+          cat android/key.properties
 
       # ─── 10) البناء ───
       - name: 🔨 Build Release APK
         run: |
           flutter build apk --release \
             --target-platform android-arm64 \
-            --no-tree-shake-icons
+            --no-tree-shake-icons \
+            --android-skip-build-dependency-validation
 
       # ─── 11) إعادة التسمية ───
       - name: 🏷️ Rename APK
@@ -108,7 +113,7 @@ jobs:
           path: artifacts/*.apk
           retention-days: 30
 
-      # ─── 13) إنشاء Release عند الـ Tag ───
+      # ─── 13) GitHub Release ───
       - name: 🚀 Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2

@@ -7,16 +7,28 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// ═══ قراءة إعدادات التوقيع ═══
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+// ═══ حل المسار بشكل مطلق (يحل مشكلة android/app/keys vs android/keys) ═══
+val keystoreFilePath: String? = if (keystorePropertiesFile.exists()) {
+    val rawPath = keystoreProperties["storeFile"] as? String
+    if (rawPath != null) {
+        // إذا كان مساراً نسبياً، حلّه بالنسبة لمجلد android/
+        val f = File(rawPath)
+        if (f.isAbsolute) rawPath else File(rootProject.projectDir, rawPath).absolutePath
+    } else null
+} else null
+
 android {
     namespace = "com.mediahub.mediacenter"
     compileSdk = 36
-    ndkVersion = "27.0.12077973"
+    // ═══ تحديث NDK إلى 28.2.13676358 حسب متطلب jni ═══
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -39,10 +51,10 @@ android {
 
     signingConfigs {
         create("release") {
-            if (keystorePropertiesFile.exists()) {
+            if (keystorePropertiesFile.exists() && keystoreFilePath != null) {
                 keyAlias = keystoreProperties["keyAlias"] as String
                 keyPassword = keystoreProperties["keyPassword"] as String
-                storeFile = file(keystoreProperties["storeFile"] as String)
+                storeFile = File(keystoreFilePath)
                 storePassword = keystoreProperties["storePassword"] as String
             }
         }
@@ -50,11 +62,11 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (keystorePropertiesFile.exists())
+            signingConfig = if (keystorePropertiesFile.exists() && keystoreFilePath != null)
                 signingConfigs.getByName("release")
             else
                 signingConfigs.getByName("debug")
-            // ═══ تم تعطيل R8 مؤقتاً لتشخيص انهيار التطبيق ═══
+            // ═══ R8 معطّل مؤقتاً لتشخيص انهيار التطبيق ═══
             isMinifyEnabled = false
             isShrinkResources = false
         }
