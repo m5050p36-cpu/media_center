@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 env:
-  FLUTTER_VERSION: '3.24.5'
+  FLUTTER_CHANNEL: 'stable'
   JAVA_VERSION: '17'
 
 jobs:
@@ -33,15 +33,18 @@ jobs:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
 
-      # ─── 3) تهيئة Flutter ───
-      - name: 🐦 Setup Flutter
+      # ─── 3) تهيئة أحدث Flutter مستقر ───
+      - name: 🐦 Setup Flutter (latest stable)
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: 'stable'
+          channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
-      # ─── 4) كاش الحزم ───
+      # ─── 4) عرض إصدار Flutter ───
+      - name: ℹ️ Flutter Version
+        run: flutter --version
+
+      # ─── 5) كاش الحزم ───
       - name: 💾 Cache pub packages
         uses: actions/cache@v4
         with:
@@ -49,16 +52,16 @@ jobs:
           key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
           restore-keys: ${{ runner.os }}-pub-
 
-      # ─── 5) جلب الحزم ───
+      # ─── 6) جلب الحزم ───
       - name: 📦 Get dependencies
         run: flutter pub get
 
-      # ─── 6) تحليل الكود ───
+      # ─── 7) تحليل الكود ───
       - name: 🔎 Analyze
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
         continue-on-error: true
 
-      # ─── 7) تجهيز NDK ───
+      # ─── 8) تجهيز NDK + CMake ───
       - name: 🛠️ Install NDK + CMake
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
@@ -68,7 +71,7 @@ jobs:
             "platforms;android-36" \
             "build-tools;34.0.0" || true
 
-      # ─── 8) استعادة Keystore من Secrets ───
+      # ─── 9) استعادة Keystore ───
       - name: 🔐 Restore Keystore
         run: |
           mkdir -p android/keys
@@ -81,14 +84,14 @@ jobs:
           EOF2
           ls -lh android/keys/
 
-      # ─── 9) البناء ───
+      # ─── 10) البناء ───
       - name: 🔨 Build Release APK
         run: |
           flutter build apk --release \
             --target-platform android-arm64 \
             --no-tree-shake-icons
 
-      # ─── 10) إعادة التسمية ───
+      # ─── 11) إعادة التسمية ───
       - name: 🏷️ Rename APK
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
@@ -97,7 +100,7 @@ jobs:
              artifacts/media-center-v${VERSION}-arm64.apk
           ls -lh artifacts/
 
-      # ─── 11) رفع كـ Artifact ───
+      # ─── 12) رفع Artifact ───
       - name: 📤 Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -105,7 +108,7 @@ jobs:
           path: artifacts/*.apk
           retention-days: 30
 
-      # ─── 12) إنشاء Release عند الـ Tag ───
+      # ─── 13) إنشاء Release عند الـ Tag ───
       - name: 🚀 Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -113,7 +116,7 @@ jobs:
           files: artifacts/*.apk
           generate_release_notes: true
 
-      # ─── 13) تنظيف ───
+      # ─── 14) تنظيف ───
       - name: 🧹 Cleanup Secrets
         if: always()
         run: |
