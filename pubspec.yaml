@@ -30,5 +30,11 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^5.0.0
 
+# ═══════════════════════════════════════════════════════
+# إصلاح تعارض app_links مع Gradle 8.14+ / AGP 8.11.1
+# ═══════════════════════════════════════════════════════
+dependency_overrides:
+  app_links: 5.0.0
+
 flutter:
   uses-material-design: true
