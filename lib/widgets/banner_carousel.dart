@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -45,15 +44,30 @@ class BannerCarousel extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    CachedNetworkImage(
-                      imageUrl: b.imageUrl,
+                    // ═══ صورة مع مؤشر تحميل ومعالجة خطأ ═══
+                    Image.network(
+                      b.imageUrl,
                       fit: BoxFit.cover,
-                      placeholder: (_, __) =>
-                          Container(color: AppTheme.card),
-                      errorWidget: (_, __, ___) => Container(
+                      loadingBuilder: (context, child, progress) {
+                        if (progress == null) return child;
+                        return Container(
+                          color: AppTheme.card,
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              value: progress.expectedTotalBytes != null
+                                  ? progress.cumulativeBytesLoaded /
+                                      progress.expectedTotalBytes!
+                                  : null,
+                              strokeWidth: 2,
+                              color: AppTheme.primary,
+                            ),
+                          ),
+                        );
+                      },
+                      errorBuilder: (_, __, ___) => Container(
                         color: AppTheme.card,
                         child: const Icon(Icons.broken_image,
-                            color: AppTheme.sub),
+                            color: AppTheme.sub, size: 40),
                       ),
                     ),
                     if (b.title != null)

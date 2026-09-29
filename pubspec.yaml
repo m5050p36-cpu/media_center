@@ -15,7 +15,8 @@ dependencies:
   just_audio: ^0.9.42
   audio_video_progress_bar: ^2.0.3
   video_player: ^2.9.2
-  cached_network_image: ^3.4.1
+  # ═══ تمت إزالة cached_network_image لحل تعارض app_links ═══
+  # cached_network_image: ^3.4.1
   url_launcher: ^6.3.1
   file_picker: ^8.1.6
   path_provider: ^2.1.5
