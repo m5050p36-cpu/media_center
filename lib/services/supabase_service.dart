@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase/supabase.dart';
 import '../models/banner_model.dart';
 import '../supabase_config.dart';
@@ -7,24 +8,43 @@ class SupabaseService {
   static final SupabaseService _instance = SupabaseService._();
   factory SupabaseService() => _instance;
 
-  static late final SupabaseClient client;
+  static SupabaseClient? _client;
+
+  static SupabaseClient get client {
+    final c = _client;
+    if (c == null) {
+      throw StateError('SupabaseService not initialized. Call initialize() first.');
+    }
+    return c;
+  }
 
   /// يجب استدعاؤها في main() قبل أي استخدام
   static Future<void> initialize() async {
-    client = SupabaseClient(
-      SupabaseConfig.supabaseUrl,
-      SupabaseConfig.supabaseAnonKey,
-    );
+    try {
+      _client = SupabaseClient(
+        SupabaseConfig.supabaseUrl,
+        SupabaseConfig.supabaseAnonKey,
+      );
+      debugPrint('✅ Supabase initialized: ${SupabaseConfig.supabaseUrl}');
+    } catch (e, st) {
+      debugPrint('❌ Supabase init failed: $e\n$st');
+      rethrow;
+    }
   }
 
   // ══════ Banners ══════
   Future<List<BannerModel>> fetchActiveBanners() async {
-    final data = await client
-        .from('banners')
-        .select()
-        .eq('is_active', true)
-        .order('display_order', ascending: true);
-    return (data as List).map((e) => BannerModel.fromMap(e)).toList();
+    try {
+      final data = await client
+          .from('banners')
+          .select()
+          .eq('is_active', true)
+          .order('display_order', ascending: true);
+      return (data as List).map((e) => BannerModel.fromMap(e)).toList();
+    } catch (e) {
+      debugPrint('fetchActiveBanners error: $e');
+      return [];
+    }
   }
 
   Future<void> addBanner(BannerModel banner) async {
