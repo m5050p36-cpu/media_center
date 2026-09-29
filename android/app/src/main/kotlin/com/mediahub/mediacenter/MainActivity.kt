@@ -1,4 +1,4 @@
-package com.mediahub.media_center
+package com.mediahub.mediacenter
 
 import io.flutter.embedding.android.FlutterActivity
 

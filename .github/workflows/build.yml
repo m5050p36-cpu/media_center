@@ -22,31 +22,26 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      # ─── 1) سحب الكود ───
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
-      # ─── 2) تهيئة Java 17 Zulu ───
       - name: ☕ Setup Java 17 (Zulu)
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
 
-      # ─── 3) تهيئة Flutter ───
       - name: 🐦 Setup Flutter (latest stable)
         uses: subosito/flutter-action@v2
         with:
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
-      # ─── 4) عرض الإصدارات ───
       - name: ℹ️ Versions
         run: |
           flutter --version
           java -version
 
-      # ─── 5) كاش الحزم ───
       - name: 💾 Cache pub packages
         uses: actions/cache@v4
         with:
@@ -54,16 +49,13 @@ jobs:
           key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
           restore-keys: ${{ runner.os }}-pub-
 
-      # ─── 6) جلب الحزم ───
       - name: 📦 Get dependencies
         run: flutter pub get
 
-      # ─── 7) تحليل الكود ───
       - name: 🔎 Analyze
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
         continue-on-error: true
 
-      # ─── 8) تجهيز NDK 28.2 + CMake ───
       - name: 🛠️ Install NDK 28.2 + CMake
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
@@ -73,22 +65,43 @@ jobs:
             "platforms;android-36" \
             "build-tools;34.0.0" || true
 
-      # ─── 9) استعادة Keystore ───
+      # ═══════════════════════════════════════════════════════
+      # استعادة Keystore — باستخدام printf بدل echo لمنع تلف البايت
+      # ═══════════════════════════════════════════════════════
       - name: 🔐 Restore Keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
+          set -e
           mkdir -p android/keys
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/keys/release-key.jks
-          cat > android/key.properties << EOF2
-          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword=${{ secrets.KEY_PASSWORD }}
-          keyAlias=${{ secrets.KEY_ALIAS }}
-          storeFile=keys/release-key.jks
-          EOF2
-          echo "─── التحقق ───"
-          ls -lh android/keys/
+
+          # طباعة حجم Base64 للتحقق (لا يكشف المحتوى)
+          echo "Base64 length: ${#KEYSTORE_B64}"
+
+          # فك التشفير باستخدام printf لتفادي إضافة \n
+          printf '%s' "$KEYSTORE_B64" | base64 -d > android/keys/release-key.jks
+
+          # التحقق من الحجم
+          echo "JKS size: $(wc -c < android/keys/release-key.jks) bytes"
+
+          # كتابة key.properties نظيفاً
+          printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=%s\n' \
+            "$STORE_PASS" "$KEY_PASS" "$KEY_ALIAS" "keys/release-key.jks" \
+            > android/key.properties
+
+          echo "─── key.properties ───"
           cat android/key.properties
 
-      # ─── 10) البناء ───
+          # التحقق من صلاحية الـ Keystore
+          echo "─── Keystore test ───"
+          keytool -list -keystore android/keys/release-key.jks -storepass "$STORE_PASS" || {
+            echo "❌ Keystore is corrupt!"
+            exit 1
+          }
+
       - name: 🔨 Build Release APK
         run: |
           flutter build apk --release \
@@ -96,7 +109,6 @@ jobs:
             --no-tree-shake-icons \
             --android-skip-build-dependency-validation
 
-      # ─── 11) إعادة التسمية ───
       - name: 🏷️ Rename APK
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
@@ -105,7 +117,6 @@ jobs:
              artifacts/media-center-v${VERSION}-arm64.apk
           ls -lh artifacts/
 
-      # ─── 12) رفع Artifact ───
       - name: 📤 Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -113,7 +124,6 @@ jobs:
           path: artifacts/*.apk
           retention-days: 30
 
-      # ─── 13) GitHub Release ───
       - name: 🚀 Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -121,7 +131,6 @@ jobs:
           files: artifacts/*.apk
           generate_release_notes: true
 
-      # ─── 14) تنظيف ───
       - name: 🧹 Cleanup Secrets
         if: always()
         run: |
