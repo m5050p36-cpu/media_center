@@ -66,7 +66,7 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> resetPassword(String email) =>
       _run(() => _auth.resetPassword(email));
 
-  /// ═══ تحسين معالجة الأخطاء ═══
+  /// معالج موحّد
   Future<bool> _run(Future<dynamic> Function() action) async {
     loading = true;
     error = null;
@@ -75,13 +75,16 @@ class AuthProvider extends ChangeNotifier {
     try {
       final result = await action();
 
-      // ═══ كشف: signup نجح لكن بدون session (Confirm email مفعّل) ═══
+      // حالة: signup بدون session (يحتاج تأكيد)
       if (result is AuthResponse) {
         if (result.user != null && result.session == null) {
-          await _loadProfile();
-          loading = false;
-          notifyListeners();
-          return true;
+          // حاول جلب profile (قد يكون أُنشئ)
+          if (result.user != null) {
+            // لا نستدعي loadProfile هنا — لا session بعد
+            loading = false;
+            notifyListeners();
+            return true;
+          }
         }
       }
 
@@ -91,26 +94,19 @@ class AuthProvider extends ChangeNotifier {
       return true;
     } on AuthException catch (e) {
       error = _translateAuthError(e.message);
-    } on TypeError catch (e) {
-      // ═══ يعوّض NullThrownError في Dart الحديث ═══
-      error = 'فشل الاتصال بـ Supabase (رد فارغ). '
-          'تأكد من تعطيل "Confirm email" في إعدادات المشروع.';
-      debugPrint('TypeError: $e');
-    } on FormatException catch (e) {
-      error = 'صيغة غير صحيحة: ${e.message}';
-      debugPrint('FormatException: $e');
+      debugPrint('AuthException: ${e.message}');
     } catch (e, st) {
-      // ═══ fallback عام لأي خطأ آخر ═══
+      debugPrint('error: $e\n$st');
       final msg = e.toString();
-      if (msg.contains('Null check operator') ||
-          msg.contains('null value') ||
-          msg.contains('_TypeError')) {
-        error = 'فشل الاتصال بـ Supabase (رد فارغ). '
-            'تأكد من تعطيل "Confirm email" في إعدادات المشروع.';
+      if (msg.contains('Invalid login credentials')) {
+        error = 'البريد أو كلمة المرور غير صحيحة';
+      } else if (msg.contains('already registered')) {
+        error = 'البريد مسجل مسبقاً — جرّب تسجيل الدخول';
+      } else if (msg.contains('Null check') || msg.contains('null value')) {
+        error = 'خطأ داخلي في المكتبة — جرّب مرة أخرى';
       } else {
-        error = 'خطأ غير متوقع: $msg';
+        error = 'خطأ: $msg';
       }
-      debugPrint('unexpected error: $e\n$st');
     }
 
     loading = false;
@@ -124,24 +120,25 @@ class AuthProvider extends ChangeNotifier {
       return 'البريد أو كلمة المرور غير صحيحة';
     }
     if (m.contains('email not confirmed')) {
-      return 'يجب تأكيد البريد الإلكتروني أولاً (تحقق من صندوق الوارد)';
+      return 'البريد غير مؤكد';
     }
     if (m.contains('user already registered') ||
         m.contains('already been registered')) {
-      return 'البريد مسجل مسبقاً — جرّب تسجيل الدخول';
+      return 'البريد مسجل مسبقاً';
     }
     if (m.contains('password should be at least')) {
-      return 'كلمة المرور قصيرة جداً';
+      return 'كلمة المرور قصيرة جداً (6 أحرف على الأقل)';
     }
     if (m.contains('unable to validate email') ||
-        m.contains('invalid email')) {
+        m.contains('invalid email') ||
+        m.contains('invalid format')) {
       return 'صيغة البريد غير صحيحة';
     }
     if (m.contains('signups not allowed')) {
-      return 'التسجيل مغلق حالياً في Supabase';
+      return 'التسجيل مغلق في Supabase';
     }
     if (m.contains('rate limit') || m.contains('too many')) {
-      return 'محاولات كثيرة — انتظر قليلاً ثم أعد المحاولة';
+      return 'محاولات كثيرة — انتظر قليلاً';
     }
     return msg;
   }
