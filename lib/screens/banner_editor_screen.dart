@@ -334,7 +334,6 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // ═══ معاينة الصورة ═══
           Container(
             height: 220,
             decoration: BoxDecoration(
@@ -438,7 +437,6 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
           const Divider(),
           const SizedBox(height: 12),
 
-          // ═══ رابط صورة (بديل) ═══
           TextField(
             controller: _imageUrlCtrl,
             enabled: _pickedImage == null,
@@ -487,7 +485,7 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
             subtitle: Text(_active ? 'البنر ظاهر' : 'البنر مخفي'),
             value: _active,
             onChanged: _saving ? null : (v) => setState(() => _active = v),
-            activeColor: AppTheme.primary,
+            activeThumbColor: AppTheme.primary,
           ),
 
           const SizedBox(height: 20),
