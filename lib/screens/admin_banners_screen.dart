@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import '../i18n/i18n.dart';
 import '../models/banner_model.dart';
+import '../services/image_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import 'banner_editor_screen.dart';
 
 class AdminBannersScreen extends StatefulWidget {
   const AdminBannersScreen({super.key});
@@ -45,32 +46,36 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
   }
 
   Future<void> _delete(BannerModel b) async {
-    final t = I18n.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(t.get('confirm_delete')),
-        content: Text(b.title ?? b.id),
+        title: const Text('تأكيد الحذف'),
+        content: Text('حذف "${b.title ?? b.id}"؟'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text(t.get('cancel')),
+            child: const Text('إلغاء'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(t.get('delete'),
-                style: const TextStyle(color: Colors.redAccent)),
+            child: const Text('حذف',
+                style: TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
     );
     if (ok != true) return;
+
     try {
+      // حذف الصورة من Storage (إذا كانت مرفوعة من قبلنا)
+      if (b.imageUrl.contains('/storage/v1/object/public/banners/')) {
+        await ImageService.delete(b.imageUrl);
+      }
       await _service.deleteBanner(b.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(t.get('success')),
+          const SnackBar(
+              content: Text('تم الحذف'),
               backgroundColor: Colors.green),
         );
       }
@@ -78,98 +83,57 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('$e'), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text('$e'), backgroundColor: Colors.redAccent),
         );
       }
     }
   }
 
-  Future<void> _showForm({BannerModel? existing}) async {
-    final t = I18n.of(context);
-    final titleCtrl = TextEditingController(text: existing?.title ?? '');
-    final imgCtrl = TextEditingController(text: existing?.imageUrl ?? '');
-    final urlCtrl = TextEditingController(text: existing?.targetUrl ?? '');
-    final orderCtrl =
-        TextEditingController(text: (existing?.displayOrder ?? 0).toString());
-    bool active = existing?.isActive ?? true;
+  Future<void> _openEditor({BannerModel? existing}) async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BannerEditorScreen(existing: existing),
+      ),
+    );
+    if (result == true) _load();
+  }
 
-    await showDialog(
+  void _previewFullscreen(BannerModel b) {
+    showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => AlertDialog(
-          title: Text(existing == null
-              ? t.get('add_banner')
-              : t.get('edit_banner')),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleCtrl,
-                  decoration: InputDecoration(labelText: t.get('banner_title')),
+      builder: (_) => Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: InteractiveViewer(
+                child: Image.network(
+                  b.imageUrl,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (_, child, p) => p == null
+                      ? child
+                      : const Center(
+                          child: CircularProgressIndicator(
+                              color: Colors.white)),
+                  errorBuilder: (_, __, ___) => const Center(
+                      child: Icon(Icons.broken_image,
+                          size: 80, color: Colors.white54)),
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: imgCtrl,
-                  decoration:
-                      InputDecoration(labelText: t.get('banner_image_url')),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: urlCtrl,
-                  decoration:
-                      InputDecoration(labelText: t.get('banner_target_url')),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: orderCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration:
-                      InputDecoration(labelText: t.get('banner_order')),
-                ),
-                const SizedBox(height: 10),
-                SwitchListTile(
-                  title: Text(t.get('banner_active')),
-                  value: active,
-                  onChanged: (v) => setSt(() => active = v),
-                ),
-              ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(t.get('cancel')),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (imgCtrl.text.trim().isEmpty) return;
-                try {
-                  final b = BannerModel(
-                    id: existing?.id ?? '',
-                    title: titleCtrl.text.trim(),
-                    imageUrl: imgCtrl.text.trim(),
-                    targetUrl: urlCtrl.text.trim(),
-                    isActive: active,
-                    displayOrder: int.tryParse(orderCtrl.text) ?? 0,
-                  );
-                  if (existing == null) {
-                    await _service.addBanner(b);
-                  } else {
-                    await _service.updateBanner(existing.id, b.toMap());
-                  }
-                  if (ctx.mounted) Navigator.pop(ctx);
-                  _load();
-                } catch (e) {
-                  if (ctx.mounted) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(content: Text('$e')),
-                    );
-                  }
-                }
-              },
-              child: Text(t.get('save')),
+            Positioned(
+              top: 40,
+              right: 20,
+              child: Material(
+                color: Colors.black54,
+                shape: const CircleBorder(),
+                child: IconButton(
+                  icon:
+                      const Icon(Icons.close, color: Colors.white, size: 28),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
             ),
           ],
         ),
@@ -179,21 +143,17 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final t = I18n.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(t.get('manage_banners')),
+        title: const Text('إدارة البنرات'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _load,
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showForm(),
+        onPressed: () => _openEditor(),
         icon: const Icon(Icons.add),
-        label: Text(t.get('add_banner')),
+        label: const Text('بنر جديد'),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -206,7 +166,7 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
                   ),
                 )
               : _banners.isEmpty
-                  ? Center(child: Text(t.get('no_albums')))
+                  ? const Center(child: Text('لا توجد بنرات'))
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: ListView.builder(
@@ -217,43 +177,86 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
                           return Card(
                             margin: const EdgeInsets.only(bottom: 10),
                             child: ListTile(
-                              leading: ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.network(
-                                  b.imageUrl,
-                                  width: 60,
-                                  height: 60,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(
-                                    width: 60,
-                                    height: 60,
-                                    color: AppTheme.card,
-                                    child: const Icon(Icons.image),
+                              contentPadding: const EdgeInsets.all(8),
+                              leading: GestureDetector(
+                                onTap: () => _previewFullscreen(b),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.network(
+                                    b.imageUrl,
+                                    width: 70,
+                                    height: 70,
+                                    fit: BoxFit.cover,
+                                    loadingBuilder: (_, child, p) =>
+                                        p == null
+                                            ? child
+                                            : Container(
+                                                width: 70,
+                                                height: 70,
+                                                color: AppTheme.card,
+                                                child: const Center(
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                            strokeWidth: 2)),
+                                              ),
+                                    errorBuilder: (_, __, ___) =>
+                                        Container(
+                                      width: 70,
+                                      height: 70,
+                                      color: AppTheme.card,
+                                      child: const Icon(Icons.image),
+                                    ),
                                   ),
                                 ),
                               ),
-                              title: Text(b.title ?? '-'),
+                              title: Text(b.title ?? '(بدون عنوان)'),
                               subtitle: Text(
-                                '${t.get('banner_order')}: ${b.displayOrder}\n'
-                                '${b.isActive ? "●" : "○"} ${b.targetUrl ?? ""}',
+                                'الترتيب: ${b.displayOrder} • ${b.isActive ? "● نشط" : "○ معطل"}\n'
+                                '${b.targetUrl ?? ""}',
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: b.isActive
+                                      ? Colors.green
+                                      : Colors.grey,
+                                ),
                               ),
                               trailing: PopupMenuButton<String>(
                                 onSelected: (v) {
                                   if (v == 'edit') {
-                                    _showForm(existing: b);
+                                    _openEditor(existing: b);
                                   } else if (v == 'delete') {
                                     _delete(b);
+                                  } else if (v == 'preview') {
+                                    _previewFullscreen(b);
                                   }
                                 },
-                                itemBuilder: (_) => [
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(
+                                      value: 'preview',
+                                      child: Row(children: [
+                                        Icon(Icons.fullscreen, size: 18),
+                                        SizedBox(width: 8),
+                                        Text('معاينة'),
+                                      ])),
                                   PopupMenuItem(
                                       value: 'edit',
-                                      child: Text(t.get('edit_banner'))),
+                                      child: Row(children: [
+                                        Icon(Icons.edit, size: 18),
+                                        SizedBox(width: 8),
+                                        Text('تعديل'),
+                                      ])),
                                   PopupMenuItem(
                                       value: 'delete',
-                                      child: Text(t.get('delete_banner'))),
+                                      child: Row(children: [
+                                        Icon(Icons.delete,
+                                            size: 18,
+                                            color: Colors.redAccent),
+                                        SizedBox(width: 8),
+                                        Text('حذف',
+                                            style: TextStyle(
+                                                color: Colors.redAccent)),
+                                      ])),
                                 ],
                               ),
                             ),
