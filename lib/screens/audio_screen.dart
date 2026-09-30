@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import '../i18n/i18n.dart';
+import '../i18n/strings.dart';
 import '../providers/player_provider.dart';
 import '../services/cache_service.dart';
 import '../theme/app_theme.dart';
