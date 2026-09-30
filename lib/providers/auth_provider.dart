@@ -17,23 +17,35 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
-    final existingSession = SupabaseService.client.auth.currentSession;
-    if (existingSession != null) {
-      isGuest = false;
-      await _loadProfile();
-      notifyListeners();
-    }
-
-    SupabaseService.client.auth.onAuthStateChange.listen((data) async {
-      if (data.session != null) {
+    try {
+      final existingSession = SupabaseService.client.auth.currentSession;
+      if (existingSession != null) {
         isGuest = false;
         await _loadProfile();
-      } else {
-        isGuest = true;
-        profile = null;
+        notifyListeners();
       }
-      notifyListeners();
-    });
+    } catch (e) {
+      debugPrint('AuthProvider init error: $e');
+    }
+
+    try {
+      SupabaseService.client.auth.onAuthStateChange.listen((data) async {
+        try {
+          if (data.session != null) {
+            isGuest = false;
+            await _loadProfile();
+          } else {
+            isGuest = true;
+            profile = null;
+          }
+          notifyListeners();
+        } catch (e) {
+          debugPrint('authStateChange error: $e');
+        }
+      });
+    } catch (e) {
+      debugPrint('listen error: $e');
+    }
   }
 
   Future<void> _loadProfile() async {
@@ -54,27 +66,48 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> resetPassword(String email) =>
       _run(() => _auth.resetPassword(email));
 
+  /// ═══ تحسين معالجة الأخطاء ═══
   Future<bool> _run(Future<dynamic> Function() action) async {
     loading = true;
     error = null;
     notifyListeners();
+
     try {
-      await action();
+      final result = await action();
+
+      // ═══ كشف حالة: signup نجح لكن بدون session (Confirm email مفعّل) ═══
+      if (result is AuthResponse) {
+        if (result.user != null && result.session == null) {
+          // المستخدم أُنشئ لكن يحتاج تأكيد البريد
+          await _loadProfile();
+          loading = false;
+          notifyListeners();
+          return true; // نعتبره نجاحاً جزئياً
+        }
+      }
+
       await _loadProfile();
       loading = false;
       notifyListeners();
       return true;
     } on AuthException catch (e) {
       error = _translateAuthError(e.message);
-    } catch (e) {
-      error = e.toString();
+    } on TypeError catch (e) {
+      error = 'خطأ داخلي في الاتصال بـ Supabase: ${e.toString()}';
+      debugPrint('TypeError: $e');
+    } on NullThrownError catch (e) {
+      error = 'فشل الاتصال بـ Supabase (رد فارغ). تحقق من إعدادات Confirm Email.';
+      debugPrint('NullThrownError: $e');
+    } catch (e, st) {
+      error = 'خطأ غير متوقع: ${e.toString()}';
+      debugPrint('unexpected error: $e\n$st');
     }
+
     loading = false;
     notifyListeners();
     return false;
   }
 
-  /// ترجمة أخطاء شائعة إلى رسائل واضحة
   String _translateAuthError(String msg) {
     final m = msg.toLowerCase();
     if (m.contains('invalid login credentials')) {
@@ -83,17 +116,22 @@ class AuthProvider extends ChangeNotifier {
     if (m.contains('email not confirmed')) {
       return 'يجب تأكيد البريد الإلكتروني أولاً (تحقق من صندوق الوارد)';
     }
-    if (m.contains('user already registered')) {
+    if (m.contains('user already registered') ||
+        m.contains('already been registered')) {
       return 'البريد مسجل مسبقاً — جرّب تسجيل الدخول';
     }
     if (m.contains('password should be at least')) {
-      return 'كلمة المرور قصيرة جداً (6 أحرف على الأقل)';
+      return 'كلمة المرور قصيرة جداً';
     }
-    if (m.contains('unable to validate email')) {
+    if (m.contains('unable to validate email') ||
+        m.contains('invalid email')) {
       return 'صيغة البريد غير صحيحة';
     }
     if (m.contains('signups not allowed')) {
       return 'التسجيل مغلق حالياً في Supabase';
+    }
+    if (m.contains('rate limit') || m.contains('too many')) {
+      return 'محاولات كثيرة — انتظر قليلاً ثم أعد المحاولة';
     }
     return msg;
   }
@@ -105,7 +143,9 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
-    await _auth.signOut();
+    try {
+      await _auth.signOut();
+    } catch (_) {}
     isGuest = true;
     profile = null;
     notifyListeners();

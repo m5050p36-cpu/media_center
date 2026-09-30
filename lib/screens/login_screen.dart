@@ -153,13 +153,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
 
                   const SizedBox(height: 24),
-                  Row(children: [
-                    const Expanded(child: Divider()),
+                  Row(children: const [
+                    Expanded(child: Divider()),
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      padding: EdgeInsets.symmetric(horizontal: 12),
                       child: Text('—'),
                     ),
-                    const Expanded(child: Divider()),
+                    Expanded(child: Divider()),
                   ]),
                   const SizedBox(height: 20),
 
@@ -243,18 +243,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _submit() async {
     final a = context.read<AuthProvider>();
-    final t = I18n.of(context);
 
     if (_email.text.trim().isEmpty || _password.text.isEmpty) {
-      _snack(t.get('error'), 'يرجى إدخال البريد وكلمة المرور');
+      _snack('يرجى إدخال البريد وكلمة المرور');
       return;
     }
     if (_isSignUp && _name.text.trim().isEmpty) {
-      _snack(t.get('error'), 'يرجى إدخال الاسم الكامل');
+      _snack('يرجى إدخال الاسم الكامل');
       return;
     }
     if (_password.text.length < 6) {
-      _snack(t.get('error'), 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      _snack('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
       return;
     }
 
@@ -267,39 +266,50 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     if (!mounted) return;
+
     if (ok) {
+      // ✅ نجح
       if (_isSignUp) {
-        _snack(t.get('success'), t.get('email_confirm_note'));
+        _snack(
+          'تم إنشاء الحساب. تحقق من بريدك للتأكيد ثم سجّل الدخول',
+          success: true,
+          duration: const Duration(seconds: 6),
+        );
+        // نبقى في الشاشة الحالية إذا لم يكن هناك session
+        final auth = context.read<AuthProvider>();
+        if (auth.isGuest) return;
       }
       _goHome();
     } else if (a.error != null) {
-      _snack(t.get('error'), a.error!);
+      _snack(a.error!, duration: const Duration(seconds: 6));
+    } else {
+      _snack('فشلت العملية — تحقق من بياناتك أو من اتصال الإنترنت');
     }
   }
 
   Future<void> _forgotPassword() async {
-    final t = I18n.of(context);
     if (_email.text.trim().isEmpty) {
-      _snack(t.get('error'), 'أدخل بريدك أولاً');
+      _snack('أدخل بريدك أولاً');
       return;
     }
     final ok =
         await context.read<AuthProvider>().resetPassword(_email.text.trim());
     if (!mounted) return;
     _snack(
-      ok ? t.get('success') : t.get('error'),
       ok ? 'تم إرسال رابط الاستعادة إلى بريدك' : 'فشل الإرسال',
       success: ok,
     );
   }
 
-  void _snack(String title, String msg, {bool success = false}) {
+  void _snack(String msg,
+      {bool success = false, Duration duration = const Duration(seconds: 4)}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        backgroundColor: success ? Colors.green.shade700 : Colors.red.shade700,
+        backgroundColor:
+            success ? Colors.green.shade700 : Colors.red.shade700,
         behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 4),
+        duration: duration,
       ),
     );
   }
