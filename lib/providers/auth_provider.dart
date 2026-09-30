@@ -75,14 +75,13 @@ class AuthProvider extends ChangeNotifier {
     try {
       final result = await action();
 
-      // ═══ كشف حالة: signup نجح لكن بدون session (Confirm email مفعّل) ═══
+      // ═══ كشف: signup نجح لكن بدون session (Confirm email مفعّل) ═══
       if (result is AuthResponse) {
         if (result.user != null && result.session == null) {
-          // المستخدم أُنشئ لكن يحتاج تأكيد البريد
           await _loadProfile();
           loading = false;
           notifyListeners();
-          return true; // نعتبره نجاحاً جزئياً
+          return true;
         }
       }
 
@@ -93,13 +92,24 @@ class AuthProvider extends ChangeNotifier {
     } on AuthException catch (e) {
       error = _translateAuthError(e.message);
     } on TypeError catch (e) {
-      error = 'خطأ داخلي في الاتصال بـ Supabase: ${e.toString()}';
+      // ═══ يعوّض NullThrownError في Dart الحديث ═══
+      error = 'فشل الاتصال بـ Supabase (رد فارغ). '
+          'تأكد من تعطيل "Confirm email" في إعدادات المشروع.';
       debugPrint('TypeError: $e');
-    } on NullThrownError catch (e) {
-      error = 'فشل الاتصال بـ Supabase (رد فارغ). تحقق من إعدادات Confirm Email.';
-      debugPrint('NullThrownError: $e');
+    } on FormatException catch (e) {
+      error = 'صيغة غير صحيحة: ${e.message}';
+      debugPrint('FormatException: $e');
     } catch (e, st) {
-      error = 'خطأ غير متوقع: ${e.toString()}';
+      // ═══ fallback عام لأي خطأ آخر ═══
+      final msg = e.toString();
+      if (msg.contains('Null check operator') ||
+          msg.contains('null value') ||
+          msg.contains('_TypeError')) {
+        error = 'فشل الاتصال بـ Supabase (رد فارغ). '
+            'تأكد من تعطيل "Confirm email" في إعدادات المشروع.';
+      } else {
+        error = 'خطأ غير متوقع: $msg';
+      }
       debugPrint('unexpected error: $e\n$st');
     }
 
