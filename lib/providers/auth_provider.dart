@@ -17,7 +17,6 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
-    // جلسة موجودة مسبقاً؟
     final existingSession = SupabaseService.client.auth.currentSession;
     if (existingSession != null) {
       isGuest = false;
@@ -25,10 +24,8 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
     }
 
-    // متابعة تغيرات المصادقة
     SupabaseService.client.auth.onAuthStateChange.listen((data) async {
-      final session = data.session;
-      if (session != null) {
+      if (data.session != null) {
         isGuest = false;
         await _loadProfile();
       } else {
@@ -42,7 +39,9 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _loadProfile() async {
     try {
       profile = await _auth.fetchProfile();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('loadProfile: $e');
+    }
     notifyListeners();
   }
 
@@ -66,13 +65,37 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } on AuthException catch (e) {
-      error = e.message;
+      error = _translateAuthError(e.message);
     } catch (e) {
       error = e.toString();
     }
     loading = false;
     notifyListeners();
     return false;
+  }
+
+  /// ترجمة أخطاء شائعة إلى رسائل واضحة
+  String _translateAuthError(String msg) {
+    final m = msg.toLowerCase();
+    if (m.contains('invalid login credentials')) {
+      return 'البريد أو كلمة المرور غير صحيحة';
+    }
+    if (m.contains('email not confirmed')) {
+      return 'يجب تأكيد البريد الإلكتروني أولاً (تحقق من صندوق الوارد)';
+    }
+    if (m.contains('user already registered')) {
+      return 'البريد مسجل مسبقاً — جرّب تسجيل الدخول';
+    }
+    if (m.contains('password should be at least')) {
+      return 'كلمة المرور قصيرة جداً (6 أحرف على الأقل)';
+    }
+    if (m.contains('unable to validate email')) {
+      return 'صيغة البريد غير صحيحة';
+    }
+    if (m.contains('signups not allowed')) {
+      return 'التسجيل مغلق حالياً في Supabase';
+    }
+    return msg;
   }
 
   void continueAsGuest() {

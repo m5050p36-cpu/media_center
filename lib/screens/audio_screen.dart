@@ -3,7 +3,9 @@ import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
+import '../i18n/i18n.dart';
 import '../providers/player_provider.dart';
+import '../services/cache_service.dart';
 import '../theme/app_theme.dart';
 
 class AudioScreen extends StatefulWidget {
@@ -17,6 +19,7 @@ class _AudioScreenState extends State<AudioScreen>
   late TabController _tab;
   List<MediaItem> _allAudio = [];
   Map<String, List<MediaItem>> _folders = {};
+  bool _scanning = false;
 
   @override
   void initState() {
@@ -32,29 +35,72 @@ class _AudioScreenState extends State<AudioScreen>
   }
 
   Future<void> _loadFiles() async {
+    final t = I18n.of(context);
+
+    // ─── 1) تحميل من الذاكرة المؤقتة ───
+    final cached = await CacheService.loadAudioFiles();
+    if (cached.isNotEmpty) {
+      _applyData(cached);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(t.get('loaded_from_cache')),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    }
+
+    // ─── 2) هل نحتاج إعادة فحص؟ ───
+    final shouldRescan = await CacheService.shouldRescan();
+    if (!shouldRescan && cached.isNotEmpty) return;
+
+    // ─── 3) فحص فعلي ───
+    if (mounted) setState(() => _scanning = true);
+
     final status = await Permission.audio.request();
-    if (!status.isGranted) return;
+    if (!status.isGranted) {
+      if (mounted) setState(() => _scanning = false);
+      return;
+    }
 
     final dirs = [
       Directory('/storage/emulated/0/Music'),
       Directory('/storage/emulated/0/Download'),
       Directory('/storage/emulated/0/Audio'),
     ];
-    final List<MediaItem> all = [];
-    final Map<String, List<MediaItem>> folders = {};
+    final List<Map<String, dynamic>> all = [];
 
     for (final dir in dirs) {
       if (!await dir.exists()) continue;
       await for (final e in dir.list(recursive: true, followLinks: false)) {
         if (e is File && _isAudio(e.path)) {
-          final item = MediaItem(title: e.path.split('/').last, path: e.path);
-          all.add(item);
-          final folderName = e.parent.path.split('/').last;
-          folders.putIfAbsent(folderName, () => []).add(item);
+          all.add({
+            'title': e.path.split('/').last,
+            'path': e.path,
+            'folder': e.parent.path.split('/').last,
+          });
         }
       }
     }
 
+    await CacheService.saveAudioFiles(all);
+    _applyData(all);
+    if (mounted) setState(() => _scanning = false);
+  }
+
+  void _applyData(List<Map<String, dynamic>> items) {
+    final folders = <String, List<MediaItem>>{};
+    final all = <MediaItem>[];
+    for (final m in items) {
+      final item = MediaItem(
+        title: m['title'] as String,
+        path: m['path'] as String,
+      );
+      all.add(item);
+      final f = (m['folder'] as String?) ?? 'Other';
+      folders.putIfAbsent(f, () => []).add(item);
+    }
     if (!mounted) return;
     setState(() {
       _allAudio = all;
@@ -73,13 +119,35 @@ class _AudioScreenState extends State<AudioScreen>
 
   @override
   Widget build(BuildContext context) {
+    final t = I18n.of(context);
     final p = context.watch<PlayerProvider>();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('الصوتيات'),
+        title: Text(t.get('audio')),
+        actions: [
+          if (_scanning)
+            const Padding(
+              padding: EdgeInsets.all(14),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () async {
+              await CacheService.clearAll();
+              _loadFiles();
+            },
+          ),
+        ],
         bottom: TabBar(
           controller: _tab,
-          tabs: const [Tab(text: 'جميع الصوتيات'), Tab(text: 'المجلدات')],
+          tabs: [
+            Tab(text: t.get('all_audio')),
+            Tab(text: t.get('folders')),
+          ],
         ),
       ),
       body: Column(
@@ -87,21 +155,18 @@ class _AudioScreenState extends State<AudioScreen>
           Expanded(
             child: TabBarView(
               controller: _tab,
-              children: [_listView(_allAudio), _foldersView()],
+              children: [_listView(_allAudio, t), _foldersView(t)],
             ),
           ),
-          if (p.currentAudio != null) _playerBar(p),
+          if (p.currentAudio != null) _playerBar(p, t),
         ],
       ),
     );
   }
 
-  Widget _listView(List<MediaItem> items) {
+  Widget _listView(List<MediaItem> items, S t) {
     if (items.isEmpty) {
-      return const Center(
-        child: Text('لا توجد ملفات صوتية',
-            style: TextStyle(color: AppTheme.sub)),
-      );
+      return Center(child: Text(t.get('no_audio')));
     }
     return ListView.builder(
       itemCount: items.length,
@@ -118,18 +183,16 @@ class _AudioScreenState extends State<AudioScreen>
     );
   }
 
-  Widget _foldersView() {
+  Widget _foldersView(S t) {
     if (_folders.isEmpty) {
-      return const Center(
-        child: Text('لا توجد مجلدات', style: TextStyle(color: AppTheme.sub)),
-      );
+      return Center(child: Text(t.get('no_folders')));
     }
     return ListView(
       children: _folders.entries.map((e) {
         return ExpansionTile(
           leading: const Icon(Icons.folder, color: Color(0xFFFFB84D)),
           title: Text(e.key),
-          subtitle: Text('${e.value.length} ملف'),
+          subtitle: Text('${e.value.length} ${t.get('files')}'),
           children: e.value.map((it) {
             return ListTile(
               contentPadding:
@@ -138,9 +201,10 @@ class _AudioScreenState extends State<AudioScreen>
                   size: 18, color: AppTheme.primary),
               title:
                   Text(it.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-              onTap: () => context
-                  .read<PlayerProvider>()
-                  .loadAudioQueue(e.value, startIndex: e.value.indexOf(it)),
+              onTap: () => context.read<PlayerProvider>().loadAudioQueue(
+                    e.value,
+                    startIndex: e.value.indexOf(it),
+                  ),
             );
           }).toList(),
         );
@@ -148,9 +212,9 @@ class _AudioScreenState extends State<AudioScreen>
     );
   }
 
-  Widget _playerBar(PlayerProvider p) {
+  Widget _playerBar(PlayerProvider p, S t) {
     return Container(
-      color: AppTheme.card,
+      color: Theme.of(context).cardTheme.color,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -167,7 +231,7 @@ class _AudioScreenState extends State<AudioScreen>
                     progress: pos,
                     total: dur,
                     onSeek: (d) => p.audioPlayer.seek(d),
-                    baseBarColor: AppTheme.sub.withValues(alpha: 0.3),
+                    baseBarColor: Colors.grey.withValues(alpha: 0.3),
                     progressBarColor: AppTheme.primary,
                     thumbColor: AppTheme.primary,
                     barHeight: 3,
@@ -186,7 +250,7 @@ class _AudioScreenState extends State<AudioScreen>
                       : Icons.repeat,
                   color: p.audioOrder == PlayOrder.shuffle
                       ? AppTheme.primary
-                      : AppTheme.sub,
+                      : null,
                 ),
                 onPressed: () {
                   final next = p.audioOrder == PlayOrder.shuffle
@@ -202,7 +266,9 @@ class _AudioScreenState extends State<AudioScreen>
               IconButton(
                 iconSize: 42,
                 icon: Icon(
-                  p.audioPlayer.playing ? Icons.pause_circle : Icons.play_circle,
+                  p.audioPlayer.playing
+                      ? Icons.pause_circle
+                      : Icons.play_circle,
                   color: AppTheme.primary,
                 ),
                 onPressed: p.togglePlay,
@@ -221,11 +287,14 @@ class _AudioScreenState extends State<AudioScreen>
                   PopupMenuItem(
                       value: AudioRepeatMode.once, child: Text('تكرار مرة')),
                   PopupMenuItem(
-                      value: AudioRepeatMode.twice, child: Text('تكرار مرتين')),
+                      value: AudioRepeatMode.twice,
+                      child: Text('تكرار مرتين')),
                   PopupMenuItem(
-                      value: AudioRepeatMode.thrice, child: Text('تكرار 3 مرات')),
+                      value: AudioRepeatMode.thrice,
+                      child: Text('تكرار 3 مرات')),
                   PopupMenuItem(
-                      value: AudioRepeatMode.loopAll, child: Text('تكرار الكل')),
+                      value: AudioRepeatMode.loopAll,
+                      child: Text('تكرار الكل')),
                 ],
               ),
             ],
@@ -234,7 +303,7 @@ class _AudioScreenState extends State<AudioScreen>
             p.currentAudio?.title ?? '',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12, color: AppTheme.sub),
+            style: const TextStyle(fontSize: 12),
           ),
         ],
       ),

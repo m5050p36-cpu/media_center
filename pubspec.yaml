@@ -1,7 +1,7 @@
 name: media_center
 description: "تطبيق تشغيل الصوتيات والفيديوهات مع Supabase"
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.0+2
 
 environment:
   sdk: ^3.6.0
@@ -11,11 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-
-  # ═══ Supabase (low-level — بدون app_links) ═══
   supabase: ^2.6.0
-
-  # ═══ باقي الحزم ═══
   provider: ^6.1.2
   just_audio: ^0.9.42
   audio_video_progress_bar: ^2.0.3
@@ -25,6 +21,7 @@ dependencies:
   file_picker: ^8.1.6
   path_provider: ^2.1.5
   permission_handler: ^11.3.1
+  shared_preferences: ^2.3.3
   carousel_slider: ^5.0.0
   google_fonts: ^6.2.1
   rxdart: ^0.28.0

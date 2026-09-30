@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../i18n/i18n.dart';
 import '../providers/auth_provider.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_drawer.dart';
 import '../widgets/banner_carousel.dart';
 import 'audio_screen.dart';
 import 'video_screen.dart';
@@ -13,37 +15,29 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final t = I18n.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
-        title: const Text('Media Center'),
-        actions: [
-          if (!auth.isGuest)
-            IconButton(
-              icon: const Icon(Icons.logout),
-              onPressed: () async {
-                await context.read<AuthProvider>().signOut();
-                if (context.mounted) {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  );
-                }
-              },
-            ),
-        ],
+        title: Text(t.get('app_name')),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           const BannerCarousel(),
           const SizedBox(height: 24),
-          const Text('الأقسام',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          Text(
+            t.get('home'),
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 12),
           _sectionCard(
             context,
             icon: Icons.library_music,
-            title: 'الصوتيات',
-            subtitle: 'جميع الصوتيات والمجلدات',
+            title: t.get('audio'),
+            subtitle: '${t.get('all_audio')} • ${t.get('folders')}',
             color: AppTheme.primary,
             onTap: () => Navigator.push(
               context,
@@ -54,9 +48,9 @@ class HomeScreen extends StatelessWidget {
           _sectionCard(
             context,
             icon: Icons.movie,
-            title: 'الفيديوهات',
-            subtitle: 'جميع الفيديوهات والألبومات',
-            color: const Color(0xFF4ECDC4),
+            title: t.get('videos'),
+            subtitle: '${t.get('all_videos')} • ${t.get('albums')}',
+            color: AppTheme.accent,
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const VideoScreen()),
@@ -65,18 +59,17 @@ class HomeScreen extends StatelessWidget {
           const SizedBox(height: 24),
           if (auth.isGuest)
             Card(
-              color: AppTheme.card,
               child: ListTile(
-                leading:
-                    const Icon(Icons.info_outline, color: AppTheme.primary),
-                title: const Text('أنت تتصفح كزائر'),
-                subtitle: const Text('سجّل الدخول للاستفادة من كل الميزات'),
+                leading: const Icon(Icons.info_outline,
+                    color: AppTheme.primary),
+                title: Text(t.get('continue_guest')),
+                subtitle: Text(t.get('login')),
                 trailing: TextButton(
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const LoginScreen()),
                   ),
-                  child: const Text('تسجيل'),
+                  child: Text(t.get('login')),
                 ),
               ),
             ),
@@ -99,7 +92,7 @@ class HomeScreen extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: AppTheme.card,
+          color: Theme.of(context).cardTheme.color,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
@@ -122,12 +115,11 @@ class HomeScreen extends StatelessWidget {
                           fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
                   Text(subtitle,
-                      style: const TextStyle(
-                          color: AppTheme.sub, fontSize: 13)),
+                      style: const TextStyle(fontSize: 13)),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: AppTheme.sub),
+            const Icon(Icons.chevron_right),
           ],
         ),
       ),
