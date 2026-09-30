@@ -9,32 +9,36 @@ class AuthService {
   User? get currentUser => _client.auth.currentUser;
   bool get isGuest => _client.auth.currentUser == null;
 
-  /// تسجيل الدخول بالبريد وكلمة المرور
+  /// تسجيل الدخول
   Future<AuthResponse> signInWithEmail(String email, String password) async {
     try {
-      return await _client.auth.signInWithPassword(
+      final res = await _client.auth.signInWithPassword(
         email: email.trim(),
         password: password,
       );
+      debugPrint(
+          '✅ Sign in: user=${res.user?.email}, session=${res.session != null}');
+      return res;
     } catch (e) {
-      debugPrint('signIn error: $e');
+      debugPrint('❌ signIn error: $e');
       rethrow;
     }
   }
 
   /// إنشاء حساب جديد
-  /// ملاحظة: إذا كان "Confirm email" مفعّلاً، قد يعيد session = null
-  /// لكن العملية تكون ناجحة.
   Future<AuthResponse> signUpWithEmail(
       String email, String password, String fullName) async {
     try {
-      return await _client.auth.signUp(
+      final res = await _client.auth.signUp(
         email: email.trim(),
         password: password,
         data: {'full_name': fullName.trim()},
       );
-    } catch (e, st) {
-      debugPrint('signUp error: $e\n$st');
+      debugPrint(
+          '✅ Sign up: user=${res.user?.email}, session=${res.session != null}');
+      return res;
+    } catch (e) {
+      debugPrint('❌ signUp error: $e');
       rethrow;
     }
   }
@@ -56,17 +60,54 @@ class AuthService {
     }
   }
 
+  /// جلب profile (مع إنشاء تلقائي إذا لم يوجد)
   Future<ProfileModel?> fetchProfile() async {
     try {
       final user = currentUser;
       if (user == null) return null;
+
+      // ─── محاولة القراءة ───
       final data = await _client
           .from('profiles')
           .select()
           .eq('id', user.id)
           .maybeSingle();
-      if (data == null) return null;
-      return ProfileModel.fromMap(data);
+
+      if (data != null) return ProfileModel.fromMap(data);
+
+      // ─── لم يوجد → أنشئه ───
+      debugPrint('⚠️ No profile found — creating one for ${user.email}');
+
+      final fallbackName = (user.userMetadata?['full_name'] as String?) ??
+          (user.email ?? '').split('@').first;
+
+      final newProfile = <String, dynamic>{
+        'id': user.id,
+        'email': user.email ?? '',
+        'full_name': fallbackName,
+        'role': 'user',
+      };
+
+      try {
+        await _client.from('profiles').insert(newProfile);
+        final created = await _client
+            .from('profiles')
+            .select()
+            .eq('id', user.id)
+            .maybeSingle();
+        if (created != null) return ProfileModel.fromMap(created);
+      } catch (e) {
+        debugPrint('insert profile error: $e');
+        // حتى لو فشل الإنشاء، نعيد profile افتراضي
+        return ProfileModel(
+          id: user.id,
+          email: user.email,
+          fullName: fallbackName,
+          role: 'user',
+        );
+      }
+
+      return null;
     } catch (e) {
       debugPrint('fetchProfile error: $e');
       return null;
