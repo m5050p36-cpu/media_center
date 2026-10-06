@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/language_provider.dart';
 import 'providers/player_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/login_screen.dart';
-import 'services/audio_background_service.dart';
 import 'services/supabase_service.dart';
 import 'theme/app_theme.dart';
 
@@ -18,7 +18,19 @@ Future<void> main() async {
     debugPrint('FlutterError: ${details.exception}');
   };
 
-  await AudioBackgroundService.initialize();
+  // 🔥 مهم جداً: تهيئة just_audio_background قبل أي شيء آخر
+  try {
+    await JustAudioBackground.init(
+      androidNotificationChannelId: 'com.mediahub.mediacenter.channel.audio',
+      androidNotificationChannelName: 'Media Center Playback',
+      androidNotificationOngoing: true,
+      androidStopForegroundOnPause: true,
+      preloadArtwork: false,
+    );
+    debugPrint('✅ Background audio service initialized');
+  } catch (e) {
+    debugPrint('⚠️ Background audio init failed: $e');
+  }
 
   runZonedGuarded(() async {
     try {
