@@ -9,6 +9,7 @@ import 'providers/theme_provider.dart';
 import 'screens/login_screen.dart';
 import 'services/supabase_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/mini_player.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,7 +19,6 @@ Future<void> main() async {
     debugPrint('FlutterError: ${details.exception}');
   };
 
-  // 🔥 مهم جداً: تهيئة just_audio_background قبل أي شيء آخر
   try {
     await JustAudioBackground.init(
       androidNotificationChannelId: 'com.mediahub.mediacenter.channel.audio',
@@ -66,6 +66,21 @@ class MediaCenterApp extends StatelessWidget {
             theme: AppTheme.light(),
             darkTheme: AppTheme.dark(),
             locale: lang.locale,
+            // 🔥 استخدام Navigator مع إضافة الـ MiniPlayer
+            builder: (context, child) {
+              return Stack(
+                children: [
+                  if (child != null) child,
+                  // MiniPlayer ثابت أسفل جميع الصفحات
+                  const Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: SafeArea(top: false, child: MiniPlayer()),
+                  ),
+                ],
+              );
+            },
             home: const LoginScreen(),
           );
         },

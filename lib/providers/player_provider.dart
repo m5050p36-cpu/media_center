@@ -22,6 +22,7 @@ class MediaItem {
   final Duration? duration;
   final String? artist;
   final String? album;
+  final String? albumArt;
 
   const MediaItem({
     required this.title,
@@ -30,12 +31,14 @@ class MediaItem {
     this.duration,
     this.artist,
     this.album,
+    this.albumArt,
   });
 
   Map<String, dynamic> toMap() => {
         'title': title,
         'path': path,
         'isVideo': isVideo,
+        'albumArt': albumArt,
       };
 }
 

@@ -8,6 +8,7 @@ import '../i18n/strings.dart';
 import '../providers/player_provider.dart';
 import '../services/cache_service.dart';
 import '../theme/app_theme.dart';
+import 'full_player_screen.dart';
 
 class AudioScreen extends StatefulWidget {
   const AudioScreen({super.key});
@@ -166,12 +167,10 @@ class _AudioScreenState extends State<AudioScreen>
 
     if (p.lastError != null && mounted) {
       debugPrint('⚠️ Queue playback failed, trying single: ${p.lastError}');
-
       final item = items[index];
       await p.playSingle(item, queue: items, index: index);
 
       if (!mounted) return;
-
       if (p.lastError != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -181,16 +180,16 @@ class _AudioScreenState extends State<AudioScreen>
             duration: const Duration(seconds: 5),
           ),
         );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('تم التشغيل: ${item.title}'),
-            backgroundColor: Colors.green.shade700,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        return;
       }
+    }
+
+    // فتح شاشة التشغيل الكاملة
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const FullPlayerScreen()),
+      );
     }
   }
 
