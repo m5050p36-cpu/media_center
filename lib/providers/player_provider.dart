@@ -14,7 +14,7 @@ enum AudioRepeatMode { none, once, twice, thrice, loopAll }
 /// ترتيب التشغيل
 enum PlayOrder { forward, reverse, shuffle }
 
-/// عنصر وسائط موحّد (كلاسنا الخاص — لا يتعارض مع jab.MediaItem)
+/// عنصر وسائط موحّد
 class MediaItem {
   final String title;
   final String path;
@@ -50,18 +50,21 @@ class PlayerProvider extends ChangeNotifier {
   PlayOrder audioOrder = PlayOrder.forward;
   int _repeatCounter = 0;
 
-  // ─── المفضلة ───
+  // ═══ آخر خطأ ═══
+  String? lastError;
+
+  // ═══ المفضلة ═══
   Set<String> favorites = {};
 
-  // ─── مؤقت النوم ───
+  // ═══ مؤقت النوم ═══
   Timer? _sleepTimer;
   DateTime? _sleepEndTime;
   Duration? _remainingSleepTime;
 
-  // ─── سرعة التشغيل ───
+  // ═══ سرعة التشغيل ═══
   double playbackSpeed = 1.0;
 
-  // ─── استئناف آخر موضع ───
+  // ═══ حفظ الموضع ═══
   Timer? _positionSaveTimer;
 
   MediaItem? get currentAudio =>
@@ -97,50 +100,117 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// مسح رسالة الخطأ
+  void clearError() {
+    lastError = null;
+    notifyListeners();
+  }
+
   // ═══════════════════════════════════════════════
-  // تحميل قائمة التشغيل — باستخدام ConcatenatingAudioSource
+  // تحميل قائمة التشغيل
   // ═══════════════════════════════════════════════
   Future<void> loadAudioQueue(List<MediaItem> items,
       {int startIndex = 0}) async {
-    audioQueue = List.from(items);
-    originalAudioOrder = List.from(items);
-    audioIndex = startIndex;
-    _repeatCounter = 0;
+    if (items.isEmpty) {
+      debugPrint('⚠️ Empty queue');
+      return;
+    }
+
+    if (startIndex < 0 || startIndex >= items.length) {
+      startIndex = 0;
+    }
 
     try {
-      // بناء قائمة المصادر مع tags للإشعار
-      final sources = items.map((item) {
-        return AudioSource.uri(
-          Uri.file(item.path),
-          tag: jab.MediaItem(
-            id: item.path,
-            title: item.title,
-            album: item.album ?? 'Media Center',
-            artUri: Uri.parse(
-                'https://qoarusrrbarbqhstqmae.supabase.co/storage/v1/object/public/banners/default.png'),
+      audioQueue = List.from(items);
+      originalAudioOrder = List.from(items);
+      audioIndex = startIndex;
+      _repeatCounter = 0;
+      lastError = null;
+      notifyListeners();
+
+      debugPrint('📂 Loading queue: ${items.length} items, start=$startIndex');
+
+      final firstFile = File(items[startIndex].path);
+      if (!await firstFile.exists()) {
+        lastError = 'الملف غير موجود: ${items[startIndex].title}';
+        debugPrint('❌ File not found: ${items[startIndex].path}');
+        notifyListeners();
+        return;
+      }
+
+      final List<AudioSource> sources = [];
+      for (final item in items) {
+        sources.add(
+          AudioSource.file(
+            item.path,
+            tag: jab.MediaItem(
+              id: item.path,
+              title: item.title,
+              album: item.album ?? 'Media Center',
+              artUri: Uri.parse(
+                  'https://qoarusrrbarbqhstqmae.supabase.co/storage/v1/object/public/banners/default.png'),
+            ),
           ),
         );
-      }).toList();
+      }
 
       final playlist = ConcatenatingAudioSource(children: sources);
+      debugPrint('📋 Playlist created with ${sources.length} sources');
 
-      await audioPlayer.setAudioSource(
-        playlist,
-        initialIndex: startIndex,
-        initialPosition: Duration.zero,
-      );
+      await audioPlayer.setAudioSource(playlist);
+      await audioPlayer.seek(Duration.zero, index: startIndex);
       await audioPlayer.setSpeed(playbackSpeed);
       await audioPlayer.play();
-    } catch (e) {
-      debugPrint('loadAudioQueue error: $e');
+      debugPrint('▶️ Playing: ${items[startIndex].title}');
+    } catch (e, st) {
+      lastError = 'فشل التشغيل: $e';
+      debugPrint('❌ loadAudioQueue error: $e\n$st');
     }
 
     notifyListeners();
   }
 
   // ═══════════════════════════════════════════════
-  // استئناف آخر موضع تشغيل
+  // تشغيل أغنية واحدة (fallback)
   // ═══════════════════════════════════════════════
+  Future<void> playSingle(MediaItem item,
+      {List<MediaItem>? queue, int? index}) async {
+    try {
+      if (queue != null) audioQueue = List.from(queue);
+      if (index != null) audioIndex = index;
+      lastError = null;
+      notifyListeners();
+
+      debugPrint('🎵 playSingle: ${item.title}');
+
+      final file = File(item.path);
+      if (!await file.exists()) {
+        lastError = 'الملف غير موجود';
+        debugPrint('❌ File not found');
+        notifyListeners();
+        return;
+      }
+
+      await audioPlayer.setAudioSource(
+        AudioSource.file(
+          item.path,
+          tag: jab.MediaItem(
+            id: item.path,
+            title: item.title,
+            album: item.album ?? 'Media Center',
+          ),
+        ),
+      );
+      await audioPlayer.setSpeed(playbackSpeed);
+      await audioPlayer.play();
+      debugPrint('▶️ Playing single: ${item.title}');
+    } catch (e, st) {
+      lastError = 'فشل: $e';
+      debugPrint('❌ playSingle error: $e\n$st');
+    }
+    notifyListeners();
+  }
+
   Future<void> _saveCurrentPosition() async {
     final current = currentAudio;
     if (current == null) return;
@@ -152,9 +222,6 @@ class PlayerProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // ═══════════════════════════════════════════════
-  // عند انتهاء المسار
-  // ═══════════════════════════════════════════════
   Future<void> _onAudioComplete() async {
     switch (audioRepeat) {
       case AudioRepeatMode.once:
@@ -188,9 +255,6 @@ class PlayerProvider extends ChangeNotifier {
     }
   }
 
-  // ═══════════════════════════════════════════════
-  // التنقل
-  // ═══════════════════════════════════════════════
   Future<void> nextAudio({bool auto = false}) async {
     if (audioQueue.isEmpty) return;
 
@@ -237,9 +301,6 @@ class PlayerProvider extends ChangeNotifier {
     return idx;
   }
 
-  // ═══════════════════════════════════════════════
-  // التحكم في التشغيل
-  // ═══════════════════════════════════════════════
   Future<void> togglePlay() async {
     if (audioPlayer.playing) {
       await audioPlayer.pause();
@@ -253,9 +314,6 @@ class PlayerProvider extends ChangeNotifier {
     await audioPlayer.seek(position);
   }
 
-  // ═══════════════════════════════════════════════
-  // الإعدادات
-  // ═══════════════════════════════════════════════
   void setAudioRepeat(AudioRepeatMode mode) {
     audioRepeat = mode;
     _repeatCounter = 0;
@@ -283,9 +341,6 @@ class PlayerProvider extends ChangeNotifier {
     );
   }
 
-  // ═══════════════════════════════════════════════
-  // المفضلة
-  // ═══════════════════════════════════════════════
   Future<bool> toggleFavorite(String path) async {
     final added = await FavoritesService.toggle(path);
     favorites = await FavoritesService.load();
@@ -298,9 +353,6 @@ class PlayerProvider extends ChangeNotifier {
   List<MediaItem> get favoriteTracks =>
       audioQueue.where((item) => favorites.contains(item.path)).toList();
 
-  // ═══════════════════════════════════════════════
-  // مؤقت النوم
-  // ═══════════════════════════════════════════════
   void startSleepTimer(Duration duration) {
     cancelSleepTimer();
     _sleepEndTime = DateTime.now().add(duration);
@@ -326,9 +378,7 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ═══════════════════════════════════════════════
   // ═══════════ Video ═══════════
-  // ═══════════════════════════════════════════════
   VideoPlayerController? videoController;
   List<MediaItem> videoQueue = [];
   int videoIndex = 0;
@@ -408,7 +458,6 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ═══════════════════════════════════════════════
   @override
   void dispose() {
     _positionSaveTimer?.cancel();
