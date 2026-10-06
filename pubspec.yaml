@@ -1,7 +1,7 @@
 name: media_center
 description: "تطبيق تشغيل الصوتيات والفيديوهات مع Supabase"
 publish_to: 'none'
-version: 1.0.0+6
+version: 1.0.0+7
 
 environment:
   sdk: ^3.6.0
@@ -12,8 +12,8 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
 
-  # ✅ supabase_flutter بدل supabase — يحفظ الجلسة تلقائياً
-  supabase_flutter: ^2.10.0
+  # ✅ supabase_flutter
+  supabase_flutter: ^2.16.0
 
   provider: ^6.1.2
   just_audio: ^0.9.42
@@ -36,9 +36,9 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^5.0.0
 
-# ✅ تجاوز إصدار app_links المتوافق مع Gradle 8.14
+# ✅ التعديل الجذري: تحديث app_links إلى إصدار يدعم getInitialLink
 dependency_overrides:
-  app_links: ^5.0.0
+  app_links: ^6.0.0
 
 flutter:
   uses-material-design: true

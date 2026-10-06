@@ -24,7 +24,7 @@ val keystoreFilePath: String? = if (keystorePropertiesFile.exists()) {
 android {
     namespace = "com.mediahub.mediacenter"
     compileSdk = 36
-    ndkVersion = "28.2.13676358"
+    ndkVersion = "27.0.12077973" // يجب أن يتوافق مع إصدار NDK المثبت لديك
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
