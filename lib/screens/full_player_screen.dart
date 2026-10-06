@@ -6,6 +6,7 @@ import '../i18n/i18n.dart';
 import '../providers/language_provider.dart';
 import '../providers/player_provider.dart';
 import '../theme/app_theme.dart';
+import '../widgets/mini_player.dart';
 
 class FullPlayerScreen extends StatefulWidget {
   const FullPlayerScreen({super.key});
@@ -16,6 +17,18 @@ class FullPlayerScreen extends StatefulWidget {
 
 class _FullPlayerScreenState extends State<FullPlayerScreen> {
   bool _showQueue = false;
+
+  @override
+  void initState() {
+    super.initState();
+    MiniPlayer.hide();
+  }
+
+  @override
+  void dispose() {
+    MiniPlayer.show();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -8,6 +8,7 @@ import '../i18n/strings.dart';
 import '../providers/player_provider.dart';
 import '../services/cache_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/mini_player.dart';
 import 'full_player_screen.dart';
 
 class AudioScreen extends StatefulWidget {
@@ -30,12 +31,14 @@ class _AudioScreenState extends State<AudioScreen>
   @override
   void initState() {
     super.initState();
+    MiniPlayer.hide();
     _tab = TabController(length: 3, vsync: this);
     _loadFiles();
   }
 
   @override
   void dispose() {
+    MiniPlayer.show();
     _tab.dispose();
     super.dispose();
   }

@@ -9,6 +9,20 @@ import '../theme/app_theme.dart';
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({super.key});
 
+  /// عدّاد الشاشات التي طلبت إخفاء الشريط
+  /// (AudioScreen, FullPlayerScreen)
+  static final ValueNotifier<int> _hiddenCount = ValueNotifier(0);
+
+  /// استدعِ عند دخول شاشة تريد إخفاء الشريط فيها
+  static void hide() {
+    _hiddenCount.value = _hiddenCount.value + 1;
+  }
+
+  /// استدعِ عند مغادرة الشاشة
+  static void show() {
+    _hiddenCount.value = (_hiddenCount.value - 1).clamp(0, 999);
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = context.watch<PlayerProvider>();
@@ -18,6 +32,21 @@ class MiniPlayer extends StatelessWidget {
 
     if (current == null) return const SizedBox.shrink();
 
+    return ValueListenableBuilder<int>(
+      valueListenable: _hiddenCount,
+      builder: (_, count, __) {
+        if (count > 0) return const SizedBox.shrink();
+        return _buildMiniPlayer(context, p, isArabic, current);
+      },
+    );
+  }
+
+  Widget _buildMiniPlayer(
+    BuildContext context,
+    PlayerProvider p,
+    bool isArabic,
+    MediaItem current,
+  ) {
     return GestureDetector(
       onTap: () {
         Navigator.push(
