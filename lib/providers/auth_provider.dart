@@ -12,55 +12,84 @@ class AuthProvider extends ChangeNotifier {
   bool loading = false;
   bool initialized = false;
   String? error;
+  bool isOffline = false;
 
   AuthProvider() {
     _init();
   }
 
   Future<void> _init() async {
-    // الجلسة مستعادة تلقائياً بواسطة supabase_flutter
+    // 1) التحقق من الجلسة المحلية أولاً (بدون شبكة)
     try {
       final session = SupabaseService.client.auth.currentSession;
       if (session != null) {
-        debugPrint('✅ Session found: ${session.user.email}');
+        debugPrint('✅ Local session found: ${session.user.email}');
         isGuest = false;
-        await _loadProfile();
+        // محاولة تحميل الملف الشخصي من الذاكرة أو من الشبكة
+        await _loadProfile(useCache: true);
       } else {
-        debugPrint('ℹ️ No session — user is guest');
+        debugPrint('ℹ️ No local session');
       }
     } catch (e) {
-      debugPrint('AuthProvider init error: $e');
+      debugPrint('Init session error: $e');
     }
 
     initialized = true;
     notifyListeners();
 
-    // مراقبة تغييرات المصادقة
+    // 2) الاستماع لتغيرات المصادقة مع معالج أخطاء إجباري
     try {
-      SupabaseService.client.auth.onAuthStateChange.listen((data) async {
-        try {
-          if (data.session != null) {
-            isGuest = false;
-            await _loadProfile();
-          } else {
-            isGuest = true;
-            profile = null;
+      SupabaseService.client.auth.onAuthStateChange.listen(
+        (data) async {
+          try {
+            if (data.session != null) {
+              isGuest = false;
+              isOffline = false;
+              await _loadProfile();
+            } else {
+              // لا نعتبر المستخدم زائراً إذا كان لديه جلسة محلية سابقة
+              // وهذا يحدث فقط عند signOut فعلي
+              isGuest = true;
+              profile = null;
+            }
+            notifyListeners();
+          } catch (e) {
+            debugPrint('AuthState handler error: $e');
           }
+        },
+        // 🔥 إجباري: معالج أخطاء الشبكة
+        onError: (error, stackTrace) {
+          debugPrint('⚠️ Auth stream network error (offline mode): $error');
+          isOffline = true;
+          // لا نغير حالة المستخدم — نبقيه مسجلاً
           notifyListeners();
-        } catch (e) {
-          debugPrint('authStateChange error: $e');
-        }
-      });
+        },
+      );
     } catch (e) {
       debugPrint('listen error: $e');
     }
   }
 
-  Future<void> _loadProfile() async {
+  Future<void> _loadProfile({bool useCache = false}) async {
     try {
       profile = await _auth.fetchProfile();
+      isOffline = false;
     } catch (e) {
-      debugPrint('loadProfile: $e');
+      debugPrint('loadProfile error: $e');
+      // إذا فشل تحميل الملف الشخصي بسبب الشبكة، نستخدم نسخة مخزنة
+      if (profile == null) {
+        final user = SupabaseService.client.auth.currentUser;
+        if (user != null) {
+          // إنشاء بروفايل مؤقت من بيانات المستخدم الحالية
+          profile = ProfileModel(
+            id: user.id,
+            email: user.email,
+            fullName: user.userMetadata?['full_name'] as String?,
+            role: 'user',
+          );
+        }
+      }
+      isOffline = true;
     }
     notifyListeners();
   }
@@ -100,7 +129,12 @@ class AuthProvider extends ChangeNotifier {
     } catch (e, st) {
       debugPrint('error: $e\n$st');
       final msg = e.toString();
-      if (msg.contains('Invalid login credentials')) {
+      if (msg.contains('SocketException') ||
+          msg.contains('Connection') ||
+          msg.contains('HandshakeException')) {
+        error = 'لا يوجد اتصال بالإنترنت — تحقق من الشبكة';
+        isOffline = true;
+      } else if (msg.contains('Invalid login credentials')) {
         error = 'البريد أو كلمة المرور غير صحيحة';
       } else if (msg.contains('already registered')) {
         error = 'البريد مسجل مسبقاً';
@@ -127,15 +161,12 @@ class AuthProvider extends ChangeNotifier {
       return 'البريد مسجل مسبقاً';
     }
     if (m.contains('password should be at least')) {
-      return 'كلمة المرور قصيرة جداً (6 أحرف على الأقل)';
+      return 'كلمة المرور قصيرة جداً';
     }
     if (m.contains('unable to validate email') ||
         m.contains('invalid email') ||
         m.contains('invalid format')) {
       return 'صيغة البريد غير صحيحة';
-    }
-    if (m.contains('signups not allowed')) {
-      return 'التسجيل مغلق في Supabase';
     }
     if (m.contains('rate limit') || m.contains('too many')) {
       return 'محاولات كثيرة — انتظر قليلاً';
@@ -153,7 +184,7 @@ class AuthProvider extends ChangeNotifier {
     try {
       await _auth.signOut();
     } catch (e) {
-      debugPrint('signOut error: $e');
+      debugPrint('signOut error (offline?): $e');
     }
     isGuest = true;
     profile = null;

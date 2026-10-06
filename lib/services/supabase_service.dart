@@ -8,10 +8,9 @@ class SupabaseService {
   static final SupabaseService _instance = SupabaseService._();
   factory SupabaseService() => _instance;
 
-  /// الوصول للعميل عبر Supabase.instance
   static SupabaseClient get client => Supabase.instance.client;
 
-  /// تهيئة supabase_flutter — يحفظ الجلسة تلقائياً
+  /// تهيئة supabase_flutter — يحفظ الجلسة تلقائياً في SharedPreferences
   static Future<void> initialize() async {
     try {
       await Supabase.initialize(
@@ -21,13 +20,15 @@ class SupabaseService {
         authOptions: const FlutterAuthClientOptions(
           authFlowType: AuthFlowType.pkce,
           autoRefreshToken: true,
+          // ملاحظة: supabase_flutter يحفظ الجلسة تلقائياً — لا حاجة لـ persistSession
         ),
       );
       debugPrint('✅ Supabase initialized with persistent session');
 
+      // التحقق من الجلسة المحلية (بدون محاولة تحديث فوري)
       final user = client.auth.currentUser;
       if (user != null) {
-        debugPrint('✅ Session restored for: ${user.email}');
+        debugPrint('✅ Session restored (offline-ready): ${user.email}');
       } else {
         debugPrint('ℹ️ No session — user is guest');
       }
@@ -37,7 +38,6 @@ class SupabaseService {
     }
   }
 
-  /// مسح الجلسة (اختياري)
   static Future<void> clearSavedSession() async {
     try {
       await client.auth.signOut();
