@@ -23,8 +23,8 @@ class _AudioScreenState extends State<AudioScreen>
   List<MediaItem> _searchResults = [];
   List<MediaItem> _sortedAudio = [];
   bool _scanning = false;
-  String _searchQuery = '';
-  String _sortBy = 'name'; // name, duration, date
+  bool _searchMode = false;
+  String _sortBy = 'name';
 
   @override
   void initState() {
@@ -39,6 +39,9 @@ class _AudioScreenState extends State<AudioScreen>
     super.dispose();
   }
 
+  // ═══════════════════════════════════════════════
+  // تحميل الملفات (مع التخزين المؤقت)
+  // ═══════════════════════════════════════════════
   Future<void> _loadFiles() async {
     final cached = await CacheService.loadAudioFiles();
     if (cached.isNotEmpty) {
@@ -116,7 +119,8 @@ class _AudioScreenState extends State<AudioScreen>
     final sorted = List<MediaItem>.from(_allAudio);
     switch (sortBy) {
       case 'name':
-        sorted.sort((a, b) => a.title.compareTo(b.title));
+        sorted.sort((a, b) =>
+            a.title.toLowerCase().compareTo(b.title.toLowerCase()));
         break;
       case 'path':
         sorted.sort((a, b) => a.path.compareTo(b.path));
@@ -127,7 +131,6 @@ class _AudioScreenState extends State<AudioScreen>
 
   void _filterSearch(String query) {
     setState(() {
-      _searchQuery = query;
       if (query.isEmpty) {
         _searchResults = [];
       } else {
@@ -151,6 +154,46 @@ class _AudioScreenState extends State<AudioScreen>
         e.endsWith('.flac');
   }
 
+  // ═══════════════════════════════════════════════
+  // 🔥 تشغيل الأغنية مع معالجة أخطاء + Fallback
+  // ═══════════════════════════════════════════════
+  Future<void> _playTrack(
+    List<MediaItem> items,
+    int index,
+    PlayerProvider p,
+  ) async {
+    await p.loadAudioQueue(items, startIndex: index);
+
+    if (p.lastError != null && mounted) {
+      debugPrint('⚠️ Queue playback failed, trying single: ${p.lastError}');
+
+      final item = items[index];
+      await p.playSingle(item, queue: items, index: index);
+
+      if (!mounted) return;
+
+      if (p.lastError != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(p.lastError!),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('تم التشغيل: ${item.title}'),
+            backgroundColor: Colors.green.shade700,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = I18n.of(context);
@@ -158,18 +201,21 @@ class _AudioScreenState extends State<AudioScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: _searchQuery.isEmpty
-            ? Text(t.get('audio'))
-            : TextField(
+        title: _searchMode
+            ? TextField(
                 autofocus: true,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(
+                  color:
+                      Theme.of(context).appBarTheme.titleTextStyle?.color ??
+                          Colors.white,
+                ),
                 decoration: const InputDecoration(
                   hintText: 'بحث...',
-                  hintStyle: TextStyle(color: Colors.white70),
                   border: InputBorder.none,
                 ),
                 onChanged: _filterSearch,
-              ),
+              )
+            : Text(t.get('audio')),
         actions: [
           if (_scanning)
             const Padding(
@@ -181,13 +227,12 @@ class _AudioScreenState extends State<AudioScreen>
               ),
             ),
           IconButton(
-            icon: Icon(_searchQuery.isEmpty ? Icons.search : Icons.close),
+            icon: Icon(_searchMode ? Icons.close : Icons.search),
             onPressed: () {
-              if (_searchQuery.isEmpty) {
-                setState(() => _searchQuery = 'search_placeholder');
-              } else {
-                _filterSearch('');
-              }
+              setState(() {
+                _searchMode = !_searchMode;
+                if (!_searchMode) _filterSearch('');
+              });
             },
           ),
           PopupMenuButton<String>(
@@ -211,72 +256,150 @@ class _AudioScreenState extends State<AudioScreen>
           tabs: [
             Tab(text: t.get('all_audio')),
             Tab(text: t.get('folders')),
-            const Tab(text: 'المفضلة', icon: Icon(Icons.favorite, size: 16)),
+            const Tab(
+              text: 'المفضلة',
+              icon: Icon(Icons.favorite, size: 16),
+            ),
           ],
         ),
       ),
       body: Column(
         children: [
+          if (p.lastError != null)
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              color: Colors.redAccent.withValues(alpha: 0.15),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber,
+                      color: Colors.redAccent, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      p.lastError!,
+                      style: const TextStyle(
+                          fontSize: 12, color: Colors.redAccent),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           Expanded(
             child: TabBarView(
               controller: _tab,
               children: [
-                _searchQuery.isNotEmpty
-                    ? _listView(_searchResults, t)
-                    : _listView(_sortedAudio, t),
-                _foldersView(t),
-                _listView(p.favoriteTracks, t, isFavorites: true),
+                _searchMode
+                    ? _listView(_searchResults, t, p)
+                    : _listView(_sortedAudio, t, p),
+                _foldersView(t, p),
+                _listView(p.favoriteTracks, t, p, isFavorites: true),
               ],
             ),
           ),
+
           if (p.currentAudio != null) _playerBar(p, t),
         ],
       ),
     );
   }
 
-  Widget _listView(List<MediaItem> items, S t, {bool isFavorites = false}) {
+  // ═══════════════════════════════════════════════
+  // قائمة الأغاني
+  // ═══════════════════════════════════════════════
+  Widget _listView(
+    List<MediaItem> items,
+    S t,
+    PlayerProvider p, {
+    bool isFavorites = false,
+  }) {
     if (items.isEmpty) {
       return Center(
-        child: Text(isFavorites ? 'لا توجد مفضلة' : t.get('no_audio')),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isFavorites ? Icons.favorite_border : Icons.music_off,
+                size: 64,
+                color: Colors.grey,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                isFavorites
+                    ? 'لا توجد مفضلة'
+                    : (_searchMode ? 'لا نتائج' : t.get('no_audio')),
+                style: const TextStyle(color: Colors.grey, fontSize: 16),
+              ),
+            ],
+          ),
+        ),
       );
     }
-    final p = context.watch<PlayerProvider>();
+
     return ListView.builder(
       itemCount: items.length,
       itemBuilder: (_, i) {
         final it = items[i];
         final isCurrent = p.currentAudio?.path == it.path;
         final isFav = p.isFavorite(it.path);
+
         return ListTile(
-          tileColor: isCurrent
-              ? AppTheme.primary.withValues(alpha: 0.15)
-              : null,
+          tileColor:
+              isCurrent ? AppTheme.primary.withValues(alpha: 0.15) : null,
           leading: Icon(
             isCurrent ? Icons.equalizer : Icons.music_note,
             color: isCurrent ? AppTheme.primary : null,
           ),
-          title: Text(it.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text(
-            it.album ?? '',
-            style: const TextStyle(fontSize: 11),
+          title: Text(
+            it.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontWeight: isCurrent ? FontWeight.bold : null,
+              color: isCurrent ? AppTheme.primary : null,
+            ),
           ),
+          subtitle: it.album != null
+              ? Text(
+                  it.album!,
+                  style: const TextStyle(fontSize: 11),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                )
+              : null,
           trailing: IconButton(
             icon: Icon(
               isFav ? Icons.favorite : Icons.favorite_border,
               color: isFav ? Colors.redAccent : null,
             ),
             onPressed: () async {
-              await p.toggleFavorite(it.path);
+              final added = await p.toggleFavorite(it.path);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content:
+                      Text(added ? 'أُضيفت للمفضلة' : 'أُزيلت من المفضلة'),
+                  duration: const Duration(seconds: 1),
+                ),
+              );
             },
           ),
-          onTap: () => p.loadAudioQueue(items, startIndex: i),
+          onTap: () => _playTrack(items, i, p),
         );
       },
     );
   }
 
-  Widget _foldersView(S t) {
+  // ═══════════════════════════════════════════════
+  // عرض المجلدات
+  // ═══════════════════════════════════════════════
+  Widget _foldersView(S t, PlayerProvider p) {
     if (_folders.isEmpty) {
       return Center(child: Text(t.get('no_folders')));
     }
@@ -287,17 +410,28 @@ class _AudioScreenState extends State<AudioScreen>
           title: Text(e.key),
           subtitle: Text('${e.value.length} ${t.get('files')}'),
           children: e.value.map((it) {
+            final isFav = p.isFavorite(it.path);
             return ListTile(
               contentPadding:
                   const EdgeInsets.only(left: 40, right: 16),
               leading: const Icon(Icons.music_note,
                   size: 18, color: AppTheme.primary),
-              title:
-                  Text(it.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-              onTap: () => context.read<PlayerProvider>().loadAudioQueue(
-                    e.value,
-                    startIndex: e.value.indexOf(it),
-                  ),
+              title: Text(
+                it.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: IconButton(
+                icon: Icon(
+                  isFav ? Icons.favorite : Icons.favorite_border,
+                  color: isFav ? Colors.redAccent : null,
+                  size: 18,
+                ),
+                onPressed: () async {
+                  await p.toggleFavorite(it.path);
+                },
+              ),
+              onTap: () => _playTrack(e.value, e.value.indexOf(it), p),
             );
           }).toList(),
         );
@@ -305,6 +439,9 @@ class _AudioScreenState extends State<AudioScreen>
     );
   }
 
+  // ═══════════════════════════════════════════════
+  // شريط المشغل السفلي
+  // ═══════════════════════════════════════════════
   Widget _playerBar(PlayerProvider p, S t) {
     return Container(
       color: Theme.of(context).cardTheme.color,
@@ -312,7 +449,6 @@ class _AudioScreenState extends State<AudioScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ─── شريط التقدم ───
           StreamBuilder<Duration>(
             stream: p.audioPlayer.positionStream,
             builder: (_, posSnap) {
@@ -337,10 +473,9 @@ class _AudioScreenState extends State<AudioScreen>
           ),
           const SizedBox(height: 4),
 
-          // ─── أزرار التحكم ───
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Shuffle
               IconButton(
                 tooltip: 'عشوائي',
                 icon: Icon(
@@ -357,14 +492,10 @@ class _AudioScreenState extends State<AudioScreen>
                   );
                 },
               ),
-
-              // Previous
               IconButton(
                 icon: const Icon(Icons.skip_previous),
                 onPressed: p.previousAudio,
               ),
-
-              // Play / Pause
               IconButton(
                 iconSize: 48,
                 icon: Icon(
@@ -375,14 +506,10 @@ class _AudioScreenState extends State<AudioScreen>
                 ),
                 onPressed: p.togglePlay,
               ),
-
-              // Next
               IconButton(
                 icon: const Icon(Icons.skip_next),
                 onPressed: () => p.nextAudio(),
               ),
-
-              // Repeat
               PopupMenuButton<AudioRepeatMode>(
                 icon: Icon(
                   _repeatIcon(p.audioRepeat),
@@ -396,7 +523,8 @@ class _AudioScreenState extends State<AudioScreen>
                       value: AudioRepeatMode.none,
                       child: Text('بدون تكرار')),
                   PopupMenuItem(
-                      value: AudioRepeatMode.once, child: Text('تكرار مرة')),
+                      value: AudioRepeatMode.once,
+                      child: Text('تكرار مرة')),
                   PopupMenuItem(
                       value: AudioRepeatMode.twice,
                       child: Text('تكرار مرتين')),
@@ -411,7 +539,6 @@ class _AudioScreenState extends State<AudioScreen>
             ],
           ),
 
-          // ─── العنوان + أدوات إضافية ───
           Row(
             children: [
               Expanded(
@@ -419,18 +546,17 @@ class _AudioScreenState extends State<AudioScreen>
                   p.currentAudio?.title ?? '',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
-
-              // سرعة التشغيل
               IconButton(
                 tooltip: 'السرعة',
                 icon: const Icon(Icons.speed, size: 20),
                 onPressed: () => _showSpeedDialog(p),
               ),
-
-              // مؤقت النوم
               IconButton(
                 tooltip: 'مؤقت النوم',
                 icon: Icon(
@@ -442,8 +568,6 @@ class _AudioScreenState extends State<AudioScreen>
                 ),
                 onPressed: () => _showSleepTimerDialog(p),
               ),
-
-              // المفضلة
               IconButton(
                 tooltip: 'مفضلة',
                 icon: Icon(
@@ -463,14 +587,16 @@ class _AudioScreenState extends State<AudioScreen>
             ],
           ),
 
-          // مؤشر مؤقت النوم
           if (p.isSleepTimerActive && p.remainingSleepTime != null)
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
                 '⏰ ${_formatDuration(p.remainingSleepTime!)}',
                 style: const TextStyle(
-                    fontSize: 11, color: Colors.orangeAccent),
+                  fontSize: 11,
+                  color: Colors.orangeAccent,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
         ],
@@ -499,9 +625,6 @@ class _AudioScreenState extends State<AudioScreen>
     return '$m:$s';
   }
 
-  // ═══════════════════════════════════════════════
-  // حوار سرعة التشغيل
-  // ═══════════════════════════════════════════════
   void _showSpeedDialog(PlayerProvider p) {
     showDialog(
       context: context,
@@ -524,7 +647,7 @@ class _AudioScreenState extends State<AudioScreen>
               ),
               const SizedBox(height: 16),
               Slider(
-                value: p.playbackSpeed,
+                value: p.playbackSpeed.clamp(0.5, 3.0),
                 min: 0.5,
                 max: 3.0,
                 divisions: 25,
@@ -561,9 +684,6 @@ class _AudioScreenState extends State<AudioScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════
-  // حوار مؤقت النوم
-  // ═══════════════════════════════════════════════
   void _showSleepTimerDialog(PlayerProvider p) {
     showDialog(
       context: context,
@@ -575,35 +695,38 @@ class _AudioScreenState extends State<AudioScreen>
             Text('مؤقت النوم'),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (p.isSleepTimerActive && p.remainingSleepTime != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Text(
-                  'متوقف بعد: ${_formatDuration(p.remainingSleepTime!)}',
-                  style: const TextStyle(
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (p.isSleepTimerActive && p.remainingSleepTime != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Text(
+                    'متوقف بعد: ${_formatDuration(p.remainingSleepTime!)}',
+                    style: const TextStyle(
                       color: Colors.orangeAccent,
-                      fontWeight: FontWeight.bold),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
-              ),
-            ...[
-              (const Duration(minutes: 5), '5 دقائق'),
-              (const Duration(minutes: 10), '10 دقائق'),
-              (const Duration(minutes: 15), '15 دقيقة'),
-              (const Duration(minutes: 30), '30 دقيقة'),
-              (const Duration(hours: 1), 'ساعة'),
-              (const Duration(hours: 2), 'ساعتان'),
-            ].map((e) => ListTile(
-                  leading: const Icon(Icons.timer_outlined),
-                  title: Text(e.$2),
-                  onTap: () {
-                    p.startSleepTimer(e.$1);
-                    Navigator.pop(context);
-                  },
-                )),
-          ],
+              ...[
+                (const Duration(minutes: 5), '5 دقائق'),
+                (const Duration(minutes: 10), '10 دقائق'),
+                (const Duration(minutes: 15), '15 دقيقة'),
+                (const Duration(minutes: 30), '30 دقيقة'),
+                (const Duration(hours: 1), 'ساعة'),
+                (const Duration(hours: 2), 'ساعتان'),
+              ].map((e) => ListTile(
+                    leading: const Icon(Icons.timer_outlined),
+                    title: Text(e.$2),
+                    onTap: () {
+                      p.startSleepTimer(e.$1);
+                      Navigator.pop(context);
+                    },
+                  )),
+            ],
+          ),
         ),
         actions: [
           if (p.isSleepTimerActive)
@@ -612,8 +735,10 @@ class _AudioScreenState extends State<AudioScreen>
                 p.cancelSleepTimer();
                 Navigator.pop(context);
               },
-              child: const Text('إلغاء المؤقت',
-                  style: TextStyle(color: Colors.redAccent)),
+              child: const Text(
+                'إلغاء المؤقت',
+                style: TextStyle(color: Colors.redAccent),
+              ),
             ),
           TextButton(
             onPressed: () => Navigator.pop(context),
