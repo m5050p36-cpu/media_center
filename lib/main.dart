@@ -6,6 +6,7 @@ import 'providers/language_provider.dart';
 import 'providers/player_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/login_screen.dart';
+import 'services/audio_background_service.dart';
 import 'services/supabase_service.dart';
 import 'theme/app_theme.dart';
 
@@ -16,6 +17,8 @@ Future<void> main() async {
     FlutterError.presentError(details);
     debugPrint('FlutterError: ${details.exception}');
   };
+
+  await AudioBackgroundService.initialize();
 
   runZonedGuarded(() async {
     try {
