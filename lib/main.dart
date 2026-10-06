@@ -95,16 +95,6 @@ class ErrorApp extends StatelessWidget {
                             fontSize: 12,
                             fontFamily: 'monospace')),
                   ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    color: Colors.black,
-                    child: SelectableText(stack,
-                        style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 10,
-                            fontFamily: 'monospace')),
-                  ),
                 ],
               ),
             ),

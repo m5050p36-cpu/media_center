@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:supabase/supabase.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/profile_model.dart';
 import '../services/auth_service.dart';
 import '../services/supabase_service.dart';
@@ -10,6 +10,7 @@ class AuthProvider extends ChangeNotifier {
   ProfileModel? profile;
   bool isGuest = true;
   bool loading = false;
+  bool initialized = false;
   String? error;
 
   AuthProvider() {
@@ -17,17 +18,24 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
+    // الجلسة مستعادة تلقائياً بواسطة supabase_flutter
     try {
-      final existingSession = SupabaseService.client.auth.currentSession;
-      if (existingSession != null) {
+      final session = SupabaseService.client.auth.currentSession;
+      if (session != null) {
+        debugPrint('✅ Session found: ${session.user.email}');
         isGuest = false;
         await _loadProfile();
-        notifyListeners();
+      } else {
+        debugPrint('ℹ️ No session — user is guest');
       }
     } catch (e) {
       debugPrint('AuthProvider init error: $e');
     }
 
+    initialized = true;
+    notifyListeners();
+
+    // مراقبة تغييرات المصادقة
     try {
       SupabaseService.client.auth.onAuthStateChange.listen((data) async {
         try {
@@ -66,7 +74,6 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> resetPassword(String email) =>
       _run(() => _auth.resetPassword(email));
 
-  /// معالج موحّد
   Future<bool> _run(Future<dynamic> Function() action) async {
     loading = true;
     error = null;
@@ -75,16 +82,11 @@ class AuthProvider extends ChangeNotifier {
     try {
       final result = await action();
 
-      // حالة: signup بدون session (يحتاج تأكيد)
       if (result is AuthResponse) {
         if (result.user != null && result.session == null) {
-          // حاول جلب profile (قد يكون أُنشئ)
-          if (result.user != null) {
-            // لا نستدعي loadProfile هنا — لا session بعد
-            loading = false;
-            notifyListeners();
-            return true;
-          }
+          loading = false;
+          notifyListeners();
+          return true;
         }
       }
 
@@ -101,9 +103,7 @@ class AuthProvider extends ChangeNotifier {
       if (msg.contains('Invalid login credentials')) {
         error = 'البريد أو كلمة المرور غير صحيحة';
       } else if (msg.contains('already registered')) {
-        error = 'البريد مسجل مسبقاً — جرّب تسجيل الدخول';
-      } else if (msg.contains('Null check') || msg.contains('null value')) {
-        error = 'خطأ داخلي في المكتبة — جرّب مرة أخرى';
+        error = 'البريد مسجل مسبقاً';
       } else {
         error = 'خطأ: $msg';
       }
@@ -152,7 +152,9 @@ class AuthProvider extends ChangeNotifier {
   Future<void> signOut() async {
     try {
       await _auth.signOut();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('signOut error: $e');
+    }
     isGuest = true;
     profile = null;
     notifyListeners();

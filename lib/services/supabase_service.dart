@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase/supabase.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/banner_model.dart';
 import '../supabase_config.dart';
 
@@ -9,122 +8,42 @@ class SupabaseService {
   static final SupabaseService _instance = SupabaseService._();
   factory SupabaseService() => _instance;
 
-  /// مفتاح تخزين refresh token
-  static const _refreshTokenKey = 'sb_refresh_token_v4';
-  static SupabaseClient? _client;
+  /// الوصول للعميل عبر Supabase.instance
+  static SupabaseClient get client => Supabase.instance.client;
 
-  static SupabaseClient get client {
-    final c = _client;
-    if (c == null) {
-      throw StateError('SupabaseService not initialized');
-    }
-    return c;
-  }
-
-  /// تهيئة العميل + استعادة الجلسة + مراقبة تغييرات المصادقة
+  /// تهيئة supabase_flutter — يحفظ الجلسة تلقائياً
   static Future<void> initialize() async {
     try {
-      _client = SupabaseClient(
-        SupabaseConfig.supabaseUrl,
-        SupabaseConfig.supabaseAnonKey,
+      await Supabase.initialize(
+        url: SupabaseConfig.supabaseUrl,
+        // ignore: deprecated_member_use
+        anonKey: SupabaseConfig.supabaseAnonKey,
+        authOptions: const FlutterAuthClientOptions(
+          authFlowType: AuthFlowType.pkce,
+          autoRefreshToken: true,
+        ),
       );
-      debugPrint('✅ Supabase client created');
+      debugPrint('✅ Supabase initialized with persistent session');
 
-      // ═══ 1) استعادة الجلسة المحفوظة ═══
-      await _restoreSession();
-
-      // ═══ 2) مراقبة تغييرات المصادقة ═══
-      _client!.auth.onAuthStateChange.listen((data) {
-        final event = data.event;
-        final session = data.session;
-        debugPrint('🔔 Auth event: $event');
-
-        if (session != null) {
-          if (event == AuthChangeEvent.signedIn ||
-              event == AuthChangeEvent.tokenRefreshed ||
-              event == AuthChangeEvent.initialSession) {
-            _saveSession(session);
-          }
-        } else {
-          if (event == AuthChangeEvent.signedOut) {
-            _clearSession();
-          }
-        }
-      });
+      final user = client.auth.currentUser;
+      if (user != null) {
+        debugPrint('✅ Session restored for: ${user.email}');
+      } else {
+        debugPrint('ℹ️ No session — user is guest');
+      }
     } catch (e, st) {
       debugPrint('❌ Supabase init failed: $e\n$st');
       rethrow;
     }
   }
 
-  // ═══════════════════════════════════════════════════
-  // استعادة الجلسة عبر refresh_token
-  // ═══════════════════════════════════════════════════
-  static Future<void> _restoreSession() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final refreshToken = prefs.getString(_refreshTokenKey);
-
-      if (refreshToken == null || refreshToken.isEmpty) {
-        debugPrint('ℹ️ No saved refresh token — user is guest');
-        return;
-      }
-
-      debugPrint('📥 Restoring session (token: ${refreshToken.substring(0, 10)}...)...');
-
-      await _client!.auth.setSession(refreshToken);
-
-      final user = _client!.auth.currentUser;
-      if (user != null) {
-        debugPrint('✅ Session restored: user=${user.email}');
-      } else {
-        debugPrint('⚠️ setSession succeeded but user is null');
-      }
-    } catch (e) {
-      debugPrint('⚠️ Failed to restore session: $e');
-      // احذف التوكن التالف
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.remove(_refreshTokenKey);
-      } catch (_) {}
-    }
-  }
-
-  // ═══════════════════════════════════════════════════
-  // حفظ refresh_token عند تسجيل الدخول
-  // ═══════════════════════════════════════════════════
-  static Future<void> _saveSession(Session session) async {
-    try {
-      final refreshToken = session.refreshToken;
-      if (refreshToken == null || refreshToken.isEmpty) {
-        debugPrint('⚠️ No refresh token in session');
-        return;
-      }
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_refreshTokenKey, refreshToken);
-      debugPrint('💾 Session saved (refresh token)');
-    } catch (e) {
-      debugPrint('⚠️ Failed to save session: $e');
-    }
-  }
-
-  // ═══════════════════════════════════════════════════
-  // مسح الجلسة عند الخروج
-  // ═══════════════════════════════════════════════════
-  static Future<void> _clearSession() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_refreshTokenKey);
-      debugPrint('🗑️ Session cleared');
-    } catch (e) {
-      debugPrint('⚠️ Failed to clear session: $e');
-    }
-  }
-
-  /// مسح يدوي (يُستدعى من signOut)
+  /// مسح الجلسة (اختياري)
   static Future<void> clearSavedSession() async {
-    await _clearSession();
+    try {
+      await client.auth.signOut();
+    } catch (e) {
+      debugPrint('clearSavedSession error: $e');
+    }
   }
 
   // ══════ Banners ══════

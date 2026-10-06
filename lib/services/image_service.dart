@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:supabase/supabase.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'supabase_service.dart';
 
 /// معلومات صورة مختارة
@@ -36,9 +36,9 @@ class ImageService {
     try {
       final x = await _picker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 100, // الجودة الأصلية
+        imageQuality: 100,
       );
-      return _fromXFile(x);
+      return await _fromXFile(x);
     } catch (e) {
       debugPrint('pickFromGallery error: $e');
       return null;
@@ -52,7 +52,7 @@ class ImageService {
         source: ImageSource.camera,
         imageQuality: 100,
       );
-      return _fromXFile(x);
+      return await _fromXFile(x);
     } catch (e) {
       debugPrint('pickFromCamera error: $e');
       return null;
@@ -71,8 +71,6 @@ class ImageService {
   }
 
   // ═══════ ضغط الصورة ═══════
-  /// [quality] من 10 إلى 100
-  /// [maxWidth]/[maxHeight] الحد الأقصى للأبعاد (بكسل)
   static Future<PickedImageInfo> compress(
     PickedImageInfo original, {
     int quality = 85,
@@ -114,7 +112,6 @@ class ImageService {
   }
 
   // ═══════ الرفع إلى Supabase Storage ═══════
-  /// يعيد الرابط العام للصورة
   static Future<String> upload(
     PickedImageInfo info, {
     String folder = 'banners',
@@ -136,8 +133,8 @@ class ImageService {
     await client.storage.from('banners').uploadBinary(
           path,
           bytes,
-          fileOptions: FileOptions(
-            contentType: _mimeType(safeExt),
+          fileOptions: const FileOptions(
+            contentType: 'image/jpeg',
             upsert: true,
             cacheControl: '3600',
           ),
@@ -151,8 +148,6 @@ class ImageService {
   // ═══════ حذف صورة من Storage ═══════
   static Future<void> delete(String publicUrl) async {
     try {
-      // استخراج المسار من URL
-      // مثال: https://xxx.supabase.co/storage/v1/object/public/banners/banners/123.jpg
       final marker = '/object/public/banners/';
       final idx = publicUrl.indexOf(marker);
       if (idx == -1) return;
@@ -162,19 +157,6 @@ class ImageService {
       debugPrint('🗑️ Deleted storage: $path');
     } catch (e) {
       debugPrint('delete error: $e');
-    }
-  }
-
-  static String _mimeType(String ext) {
-    switch (ext) {
-      case 'png':
-        return 'image/png';
-      case 'webp':
-        return 'image/webp';
-      case 'gif':
-        return 'image/gif';
-      default:
-        return 'image/jpeg';
     }
   }
 }

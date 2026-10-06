@@ -17,6 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _name = TextEditingController();
   bool _isSignUp = false;
   bool _obscure = true;
+  bool _autoNavigated = false;
 
   @override
   void dispose() {
@@ -30,6 +31,14 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final t = I18n.of(context);
+
+    // ═══ تخطي تلقائي إذا كان المستخدم مسجلاً ═══
+    if (auth.initialized && !auth.isGuest && !_autoNavigated) {
+      _autoNavigated = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _goHome();
+      });
+    }
 
     return Scaffold(
       body: SafeArea(
@@ -268,22 +277,17 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
 
     if (ok) {
-      // ✅ نجح
-      if (_isSignUp) {
+      if (_isSignUp && a.isGuest) {
         _snack(
           'تم إنشاء الحساب. تحقق من بريدك للتأكيد ثم سجّل الدخول',
           success: true,
           duration: const Duration(seconds: 6),
         );
-        // نبقى في الشاشة الحالية إذا لم يكن هناك session
-        final auth = context.read<AuthProvider>();
-        if (auth.isGuest) return;
+        return;
       }
       _goHome();
     } else if (a.error != null) {
       _snack(a.error!, duration: const Duration(seconds: 6));
-    } else {
-      _snack('فشلت العملية — تحقق من بياناتك أو من اتصال الإنترنت');
     }
   }
 
@@ -295,10 +299,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final ok =
         await context.read<AuthProvider>().resetPassword(_email.text.trim());
     if (!mounted) return;
-    _snack(
-      ok ? 'تم إرسال رابط الاستعادة إلى بريدك' : 'فشل الإرسال',
-      success: ok,
-    );
+    _snack(ok ? 'تم إرسال رابط الاستعادة' : 'فشل الإرسال', success: ok);
   }
 
   void _snack(String msg,

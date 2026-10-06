@@ -31,23 +31,20 @@ jobs:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
 
-      - name: 🐦 Setup Flutter (latest stable)
+      - name: 🐦 Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
       - name: ℹ️ Versions
-        run: |
-          flutter --version
-          java -version
+        run: flutter --version
 
       - name: 💾 Cache pub packages
         uses: actions/cache@v4
         with:
           path: ~/.pub-cache
           key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
-          restore-keys: ${{ runner.os }}-pub-
 
       - name: 📦 Get dependencies
         run: flutter pub get
@@ -65,9 +62,6 @@ jobs:
             "platforms;android-36" \
             "build-tools;34.0.0" || true
 
-      # ═══════════════════════════════════════════════════════
-      # استعادة Keystore — باستخدام printf بدل echo لمنع تلف البايت
-      # ═══════════════════════════════════════════════════════
       - name: 🔐 Restore Keystore
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -77,30 +71,14 @@ jobs:
         run: |
           set -e
           mkdir -p android/keys
-
-          # طباعة حجم Base64 للتحقق (لا يكشف المحتوى)
-          echo "Base64 length: ${#KEYSTORE_B64}"
-
-          # فك التشفير باستخدام printf لتفادي إضافة \n
-          printf '%s' "$KEYSTORE_B64" | base64 -d > android/keys/release-key.jks
-
-          # التحقق من الحجم
-          echo "JKS size: $(wc -c < android/keys/release-key.jks) bytes"
-
-          # كتابة key.properties نظيفاً
+          CLEAN_B64=$(printf '%s' "$KEYSTORE_B64" | tr -d ' \t\r\n')
+          printf '%s' "$CLEAN_B64" | base64 -d > android/keys/release-key.jks
+          FIRST_BYTE=$(head -c 1 android/keys/release-key.jks | xxd -p)
+          [ "$FIRST_BYTE" = "fe" ] || { echo "❌ Keystore corrupt"; exit 1; }
           printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=%s\n' \
             "$STORE_PASS" "$KEY_PASS" "$KEY_ALIAS" "keys/release-key.jks" \
             > android/key.properties
-
-          echo "─── key.properties ───"
-          cat android/key.properties
-
-          # التحقق من صلاحية الـ Keystore
-          echo "─── Keystore test ───"
-          keytool -list -keystore android/keys/release-key.jks -storepass "$STORE_PASS" || {
-            echo "❌ Keystore is corrupt!"
-            exit 1
-          }
+          keytool -list -keystore android/keys/release-key.jks -storepass "$STORE_PASS"
 
       - name: 🔨 Build Release APK
         run: |
@@ -109,30 +87,14 @@ jobs:
             --no-tree-shake-icons \
             --android-skip-build-dependency-validation
 
-      - name: 🏷️ Rename APK
-        run: |
-          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
-          mkdir -p artifacts
-          cp build/app/outputs/flutter-apk/app-release.apk \
-             artifacts/media-center-v${VERSION}-arm64.apk
-          ls -lh artifacts/
-
-      - name: 📤 Upload APK Artifact
+      - name: 📤 Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: media-center-apk
-          path: artifacts/*.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
 
-      - name: 🚀 Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/*.apk
-          generate_release_notes: true
-
-      - name: 🧹 Cleanup Secrets
+      - name: 🧹 Cleanup
         if: always()
         run: |
-          rm -f android/keys/release-key.jks
-          rm -f android/key.properties
+          rm -f android/keys/release-key.jks android/key.properties
