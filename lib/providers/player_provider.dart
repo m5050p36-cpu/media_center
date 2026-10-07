@@ -313,6 +313,23 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// ═══ إيقاف نهائي + مسح قائمة التشغيل ═══
+  Future<void> stopAndClear() async {
+    try {
+      await audioPlayer.stop();
+      audioQueue.clear();
+      originalAudioOrder.clear();
+      audioIndex = 0;
+      _repeatCounter = 0;
+      lastError = null;
+      cancelSleepTimer();
+      debugPrint('🛑 Player stopped and cleared');
+    } catch (e) {
+      debugPrint('stopAndClear error: $e');
+    }
+    notifyListeners();
+  }
+
   Future<void> seek(Duration position) async {
     await audioPlayer.seek(position);
   }

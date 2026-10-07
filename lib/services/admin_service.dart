@@ -14,6 +14,8 @@ class AdminService {
         throw Exception('لا توجد جلسة نشطة');
       }
 
+      debugPrint('🔐 Calling admin-change-password for: $userId');
+
       final response = await SupabaseService.client.functions.invoke(
         'admin-change-password',
         body: {
@@ -22,20 +24,41 @@ class AdminService {
         },
       );
 
+      debugPrint('📥 Response status: ${response.status}');
+      debugPrint('📥 Response data: ${response.data}');
+
       if (response.status != 200) {
         final data = response.data;
-        final msg = (data is Map && data['error'] != null)
-            ? data['error'].toString()
-            : 'فشل تغيير كلمة المرور (${response.status})';
+        String msg = 'فشل تغيير كلمة المرور (${response.status})';
+        if (data is Map) {
+          if (data['error'] != null) msg = data['error'].toString();
+          if (data['message'] != null) msg = data['message'].toString();
+        }
         throw Exception(msg);
       }
 
-      debugPrint('✅ Password changed for user: $userId');
+      // ═══ تحقق من الرد ═══
+      final data = response.data;
+      if (data is Map && data['success'] != true) {
+        throw Exception(data['error']?.toString() ?? 'لم ينجح التغيير');
+      }
+
+      debugPrint('✅ Password changed successfully');
     } on FunctionException catch (e) {
-      debugPrint('FunctionException: $e');
-      throw Exception('خطأ في الاتصال: ${e.details ?? e.reasonPhrase}');
+      debugPrint('❌ FunctionException: status=${e.status}, details=${e.details}');
+      String msg = 'خطأ في الاتصال بالخدمة';
+      if (e.status == 404) {
+        msg = 'الخدمة غير موجودة — تأكد من نشر Edge Function';
+      } else if (e.status == 401) {
+        msg = 'مصادقة فاشلة — أوقف JWT Verification في Edge Function';
+      } else if (e.status == 403) {
+        msg = 'ليس لديك صلاحية';
+      } else if (e.details != null) {
+        msg = 'خطأ ${e.status}: ${e.details}';
+      }
+      throw Exception(msg);
     } catch (e) {
-      debugPrint('changeUserPassword error: $e');
+      debugPrint('❌ changeUserPassword error: $e');
       rethrow;
     }
   }

@@ -208,12 +208,12 @@ class MiniPlayer extends StatelessWidget {
                   IconButton(
                     icon: const Icon(Icons.close,
                         color: Colors.white70, size: 20),
-                    onPressed: () {
-                      p.audioPlayer.stop();
+                    onPressed: () async {
+                      await p.stopAndClear();
                     },
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
-                    tooltip: 'إغلاق',
+                    tooltip: 'إغلاق المشغل',
                   ),
                 ],
               ),
