@@ -4,7 +4,7 @@ class S {
 
   static const _map = {
     'ar': {
-      'app_name': 'مركز الوسائط',
+      'app_name': 'AR مشغل موسيقى & فيديوهات',
       'home': 'الرئيسية',
       'profile': 'الملف الشخصي',
       'theme': 'الثيم',
@@ -62,7 +62,7 @@ class S {
       'email_confirm_note': 'تحقق من بريدك لتأكيد الحساب',
     },
     'en': {
-      'app_name': 'Media Center',
+      'app_name': 'AR Music & Video Player',
       'home': 'Home',
       'profile': 'Profile',
       'theme': 'Theme',

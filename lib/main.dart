@@ -60,7 +60,7 @@ class MediaCenterApp extends StatelessWidget {
       child: Consumer2<ThemeProvider, LanguageProvider>(
         builder: (context, theme, lang, _) {
           return MaterialApp(
-            title: 'Media Center',
+            title: 'AR مشغل موسيقى & فيديوهات',
             debugShowCheckedModeBanner: false,
             themeMode: theme.mode,
             theme: AppTheme.light(),

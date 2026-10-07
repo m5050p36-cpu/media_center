@@ -10,9 +10,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
-        android:label="Media Center"
+        android:label="AR مشغل موسيقى &amp; فيديوهات"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/launcher_icon"
         android:usesCleartextTraffic="true"
         android:requestLegacyExternalStorage="true">
         <!-- 🔥 تغيير مهم: AudioServiceActivity بدلاً من MainActivity -->
