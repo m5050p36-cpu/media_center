@@ -562,12 +562,16 @@ class _AudioScreenState extends State<AudioScreen>
   // شريط المشغل السفلي (الأصلي — بجميع الميزات)
   // ═══════════════════════════════════════════════
   Widget _playerBar(PlayerProvider p, S t) {
+    final current = p.currentAudio;
+    if (current == null) return const SizedBox.shrink();
+
     return Container(
       color: Theme.of(context).cardTheme.color,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // ═══ شريط التقدم ═══
           StreamBuilder<Duration>(
             stream: p.audioPlayer.positionStream,
             builder: (_, posSnap) {
@@ -590,8 +594,133 @@ class _AudioScreenState extends State<AudioScreen>
               );
             },
           ),
+          const SizedBox(height: 6),
+
+          // ═══ صف العنوان + صورة الغلاف ═══
+          Row(
+            children: [
+              // 🖼️ صورة الغلاف (قابلة للضغط → FullPlayer)
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const FullPlayerScreen()),
+                  );
+                },
+                child: Hero(
+                  tag: 'album_art_${current.path}',
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppTheme.primary.withValues(alpha: 0.4),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primary.withValues(alpha: 0.25),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: _buildSmallCover(current),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+
+              // 📝 العنوان + المجلد
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const FullPlayerScreen()),
+                    );
+                  },
+                  behavior: HitTestBehavior.opaque,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        current.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        current.album ?? 'Media Center',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.color
+                              ?.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // ⚡ سرعة التشغيل
+              IconButton(
+                tooltip: 'السرعة',
+                icon: const Icon(Icons.speed, size: 20),
+                onPressed: () => _showSpeedDialog(p),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+
+              // 🌙 مؤقت النوم
+              IconButton(
+                tooltip: 'مؤقت النوم',
+                icon: Icon(
+                  p.isSleepTimerActive
+                      ? Icons.bedtime
+                      : Icons.bedtime_outlined,
+                  color: p.isSleepTimerActive ? Colors.orangeAccent : null,
+                  size: 20,
+                ),
+                onPressed: () => _showSleepTimerDialog(p),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+
+              // ⛶ فتح الشاشة الكاملة
+              IconButton(
+                tooltip: 'شاشة كاملة',
+                icon: const Icon(Icons.open_in_full, size: 20),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const FullPlayerScreen()),
+                  );
+                },
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+            ],
+          ),
+
           const SizedBox(height: 4),
 
+          // ═══ صف أزرار التحكم الرئيسية ═══
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -658,49 +787,6 @@ class _AudioScreenState extends State<AudioScreen>
             ],
           ),
 
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  p.currentAudio?.title ?? '',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: 'السرعة',
-                icon: const Icon(Icons.speed, size: 20),
-                onPressed: () => _showSpeedDialog(p),
-              ),
-              IconButton(
-                tooltip: 'مؤقت النوم',
-                icon: Icon(
-                  p.isSleepTimerActive
-                      ? Icons.bedtime
-                      : Icons.bedtime_outlined,
-                  color: p.isSleepTimerActive ? Colors.orangeAccent : null,
-                  size: 20,
-                ),
-                onPressed: () => _showSleepTimerDialog(p),
-              ),
-              IconButton(
-                tooltip: 'مفتوح',
-                icon: const Icon(Icons.open_in_full, size: 20),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const FullPlayerScreen()),
-                  );
-                },
-              ),
-            ],
-          ),
-
           if (p.isSleepTimerActive && p.remainingSleepTime != null)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -714,6 +800,48 @@ class _AudioScreenState extends State<AudioScreen>
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════
+  // صورة غلاف صغيرة (مع 3 حالات)
+  // ═══════════════════════════════════════════════
+  Widget _buildSmallCover(MediaItem item) {
+    final art = item.albumArt;
+
+    if (art == null || art.isEmpty) return _smallPlaceholder();
+
+    if (art.startsWith('http')) {
+      return Image.network(
+        art,
+        fit: BoxFit.cover,
+        loadingBuilder: (_, child, p) =>
+            p == null ? child : _smallPlaceholder(),
+        errorBuilder: (_, __, ___) => _smallPlaceholder(),
+      );
+    }
+
+    return Image.file(
+      File(art),
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => _smallPlaceholder(),
+    );
+  }
+
+  Widget _smallPlaceholder() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [AppTheme.primary, AppTheme.accent],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: const Icon(
+        Icons.music_note,
+        color: Colors.white,
+        size: 22,
       ),
     );
   }
