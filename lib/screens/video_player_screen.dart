@@ -291,9 +291,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         children: [
           IconButton(
             icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () {
+            onPressed: () async {
+              // ═══ تنظيف شامل قبل الخروج ═══
               BrightnessService.reset();
-              Navigator.pop(context);
+              final p = context.read<PlayerProvider>();
+              await p.videoController?.pause();
+              if (!mounted) return;
+              // العودة لقائمة الفيديوهات
+              Navigator.of(context).pop();
             },
           ),
           Expanded(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../i18n/i18n.dart';
 import '../providers/auth_provider.dart';
 import '../theme/app_theme.dart';
@@ -292,14 +293,16 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _forgotPassword() async {
-    if (_email.text.trim().isEmpty) {
-      _snack('أدخل بريدك أولاً');
-      return;
+    // فتح بوت Telegram للمساعدة في استعادة كلمة المرور
+    final uri = Uri.parse('https://t.me/Ra16bot');
+    try {
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        throw Exception('فشل فتح الرابط');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _snack('تعذر فتح Telegram — تأكد من تثبيته');
     }
-    final ok =
-        await context.read<AuthProvider>().resetPassword(_email.text.trim());
-    if (!mounted) return;
-    _snack(ok ? 'تم إرسال رابط الاستعادة' : 'فشل الإرسال', success: ok);
   }
 
   void _snack(String msg,
