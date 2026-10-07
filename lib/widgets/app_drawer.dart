@@ -5,9 +5,7 @@ import '../providers/auth_provider.dart';
 import '../providers/language_provider.dart';
 import '../providers/theme_provider.dart';
 import '../screens/about_screen.dart';
-import '../screens/admin_banners_screen.dart';
-import '../screens/admin_users_screen.dart';
-import '../screens/admin_versions_screen.dart';
+import '../screens/admin_panel_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/privacy_policy_screen.dart';
 import '../screens/profile_screen.dart';
@@ -113,78 +111,35 @@ class AppDrawer extends StatelessWidget {
                       },
                     ),
 
-                  // ═══ لوحة الأدمن ═══
-                  if (auth.isAdmin) ...[
-                    const Divider(),
-                    Padding(
-                      padding: const EdgeInsets.only(
-                          right: 16, top: 12, bottom: 4),
-                      child: Text(
-                        'لوحة الإدارة',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppTheme.primary.withValues(alpha: 0.9),
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
+                  // ═══ لوحة الإدارة (عنصر واحد) ═══
+                  if (auth.isAdmin)
                     ListTile(
-                      leading: const Icon(Icons.admin_panel_settings,
-                          color: AppTheme.primary),
+                      leading: const Icon(
+                        Icons.admin_panel_settings,
+                        color: AppTheme.primary,
+                      ),
                       title: Text(
                         t.get('admin_panel'),
                         style: const TextStyle(
-                            color: AppTheme.primary,
-                            fontWeight: FontWeight.bold),
+                          color: AppTheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      trailing: const Icon(
+                        Icons.chevron_left,
+                        color: AppTheme.primary,
+                        size: 20,
                       ),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (_) =>
-                                  const AdminBannersScreen()),
+                            builder: (_) => const AdminPanelScreen(),
+                          ),
                         );
                       },
                     ),
-                    ListTile(
-                      leading:
-                          const Icon(Icons.group, color: AppTheme.primary),
-                      title: const Text(
-                        'إدارة المستخدمين',
-                        style: TextStyle(
-                            color: AppTheme.primary,
-                            fontWeight: FontWeight.bold),
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const AdminUsersScreen()),
-                        );
-                      },
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.system_update_alt,
-                          color: AppTheme.primary),
-                      title: const Text(
-                        'إدارة الإصدارات',
-                        style: TextStyle(
-                            color: AppTheme.primary,
-                            fontWeight: FontWeight.bold),
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  const AdminVersionsScreen()),
-                        );
-                      },
-                    ),
-                  ],
 
                   const Divider(),
 

@@ -5,17 +5,21 @@ import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import 'banner_editor_screen.dart';
 
-class AdminBannersScreen extends StatefulWidget {
-  const AdminBannersScreen({super.key});
+class AdminBannersTab extends StatefulWidget {
+  const AdminBannersTab({super.key});
   @override
-  State<AdminBannersScreen> createState() => _AdminBannersScreenState();
+  State<AdminBannersTab> createState() => _AdminBannersTabState();
 }
 
-class _AdminBannersScreenState extends State<AdminBannersScreen> {
+class _AdminBannersTabState extends State<AdminBannersTab>
+    with AutomaticKeepAliveClientMixin {
   final _service = SupabaseService();
   List<BannerModel> _banners = [];
   bool _loading = true;
   String? _error;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -34,7 +38,8 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
           .select()
           .order('display_order', ascending: true);
       setState(() {
-        _banners = (data as List).map((e) => BannerModel.fromMap(e)).toList();
+        _banners =
+            (data as List).map((e) => BannerModel.fromMap(e)).toList();
         _loading = false;
       });
     } catch (e) {
@@ -67,25 +72,23 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
     if (ok != true) return;
 
     try {
-      // حذف الصورة من Storage (إذا كانت مرفوعة من قبلنا)
       if (b.imageUrl.contains('/storage/v1/object/public/banners/')) {
         await ImageService.delete(b.imageUrl);
       }
       await _service.deleteBanner(b.id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('تم الحذف'),
-              backgroundColor: Colors.green),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم الحذف'),
+          backgroundColor: Colors.green,
+        ),
+      );
       _load();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e'), backgroundColor: Colors.redAccent),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e'), backgroundColor: Colors.redAccent),
+      );
     }
   }
 
@@ -129,8 +132,8 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
                 color: Colors.black54,
                 shape: const CircleBorder(),
                 child: IconButton(
-                  icon:
-                      const Icon(Icons.close, color: Colors.white, size: 28),
+                  icon: const Icon(Icons.close,
+                      color: Colors.white, size: 28),
                   onPressed: () => Navigator.pop(context),
                 ),
               ),
@@ -143,13 +146,10 @@ class _AdminBannersScreenState extends State<AdminBannersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('إدارة البنرات'),
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
-        ],
-      ),
+      backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openEditor(),
         icon: const Icon(Icons.add),

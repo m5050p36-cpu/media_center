@@ -2,15 +2,19 @@ import 'package:flutter/material.dart';
 import '../services/version_service.dart';
 import '../theme/app_theme.dart';
 
-class AdminVersionsScreen extends StatefulWidget {
-  const AdminVersionsScreen({super.key});
+class AdminVersionsTab extends StatefulWidget {
+  const AdminVersionsTab({super.key});
   @override
-  State<AdminVersionsScreen> createState() => _AdminVersionsScreenState();
+  State<AdminVersionsTab> createState() => _AdminVersionsTabState();
 }
 
-class _AdminVersionsScreenState extends State<AdminVersionsScreen> {
+class _AdminVersionsTabState extends State<AdminVersionsTab>
+    with AutomaticKeepAliveClientMixin {
   List<AppVersionInfo> _versions = [];
   bool _loading = true;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -84,8 +88,7 @@ class _AdminVersionsScreenState extends State<AdminVersionsScreen> {
                 ),
                 SwitchListTile(
                   title: const Text('فرض التحديث'),
-                  subtitle:
-                      const Text('يجبر المستخدم على التحديث فوراً'),
+                  subtitle: const Text('يجبر المستخدم على التحديث فوراً'),
                   value: forceUpdate,
                   onChanged: (v) => setSt(() => forceUpdate = v),
                 ),
@@ -182,13 +185,10 @@ class _AdminVersionsScreenState extends State<AdminVersionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('إدارة الإصدارات'),
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
-        ],
-      ),
+      backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addVersion,
         icon: const Icon(Icons.add),
@@ -198,87 +198,97 @@ class _AdminVersionsScreenState extends State<AdminVersionsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _versions.isEmpty
               ? const Center(child: Text('لا توجد إصدارات'))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: _versions.length,
-                  itemBuilder: (_, i) {
-                    final v = _versions[i];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.all(12),
-                        leading: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: v.isActive
-                                ? AppTheme.primary.withValues(alpha: 0.15)
-                                : Colors.grey.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            Icons.android,
-                            color: v.isActive ? AppTheme.primary : Colors.grey,
-                          ),
-                        ),
-                        title: Row(
-                          children: [
-                            Text(
-                              v.versionName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
-                              ),
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _versions.length,
+                    itemBuilder: (_, i) {
+                      final v = _versions[i];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.all(12),
+                          leading: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: v.isActive
+                                  ? AppTheme.primary
+                                      .withValues(alpha: 0.15)
+                                  : Colors.grey.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            const SizedBox(width: 8),
-                            if (v.isActive)
-                              _chip('مفعّل', AppTheme.primary)
-                            else
-                              _chip('معطل', Colors.grey),
-                            if (v.forceUpdate) ...[
-                              const SizedBox(width: 4),
-                              _chip('إجباري', Colors.redAccent),
-                            ],
-                          ],
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 4),
-                            Text('Code: ${v.versionCode}',
-                                style: const TextStyle(fontSize: 11)),
-                            if (v.releaseNotes != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Text(
-                                  v.releaseNotes!,
-                                  style: const TextStyle(
-                                      fontSize: 12, height: 1.5),
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
+                            child: Icon(
+                              Icons.android,
+                              color: v.isActive
+                                  ? AppTheme.primary
+                                  : Colors.grey,
+                            ),
+                          ),
+                          title: Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                v.versionName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
                                 ),
                               ),
-                          ],
+                              _chip(
+                                v.isActive ? 'مفعّل' : 'معطل',
+                                v.isActive ? AppTheme.primary : Colors.grey,
+                              ),
+                              if (v.forceUpdate)
+                                _chip('إجباري', Colors.redAccent),
+                            ],
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 4),
+                              Text('Code: ${v.versionCode}',
+                                  style: const TextStyle(fontSize: 11)),
+                              if (v.releaseNotes != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    v.releaseNotes!,
+                                    style: const TextStyle(
+                                        fontSize: 12, height: 1.5),
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          trailing: PopupMenuButton<String>(
+                            onSelected: (action) {
+                              if (action == 'toggle') _toggleActive(v);
+                              if (action == 'delete') _delete(v);
+                            },
+                            itemBuilder: (_) => [
+                              PopupMenuItem(
+                                value: 'toggle',
+                                child: Text(
+                                    v.isActive ? 'تعطيل' : 'تفعيل'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Text(
+                                  'حذف',
+                                  style:
+                                      TextStyle(color: Colors.redAccent),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        trailing: PopupMenuButton<String>(
-                          onSelected: (action) {
-                            if (action == 'toggle') _toggleActive(v);
-                            if (action == 'delete') _delete(v);
-                          },
-                          itemBuilder: (_) => [
-                            PopupMenuItem(
-                              value: 'toggle',
-                              child: Text(v.isActive ? 'تعطيل' : 'تفعيل'),
-                            ),
-                            const PopupMenuItem(
-                              value: 'delete',
-                              child: Text('حذف',
-                                  style: TextStyle(color: Colors.redAccent)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
     );
   }
