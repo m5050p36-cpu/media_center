@@ -7,6 +7,7 @@ import '../i18n/i18n.dart';
 import '../i18n/strings.dart';
 import '../providers/player_provider.dart';
 import '../services/cache_service.dart';
+import '../services/metadata_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/mini_player.dart';
 import 'full_player_screen.dart';
@@ -101,11 +102,13 @@ class _AudioScreenState extends State<AudioScreen>
     final folders = <String, List<MediaItem>>{};
     final all = <MediaItem>[];
     for (final m in items) {
+      final path = m['path'] as String;
+      final cachedArt = MetadataService.getCachedArt(path);
       final item = MediaItem(
         title: m['title'] as String,
-        path: m['path'] as String,
+        path: path,
         album: (m['folder'] as String?) ?? 'Other',
-        albumArt: m['albumArt'] as String?,
+        albumArt: cachedArt ?? (m['albumArt'] as String?),
       );
       all.add(item);
       final f = (m['folder'] as String?) ?? 'Other';
@@ -117,6 +120,55 @@ class _AudioScreenState extends State<AudioScreen>
       _folders = folders;
       _sortAudio(_sortBy);
     });
+
+    // 🎼 استخراج الميتاداتا في الخلفية
+    _extractMetadata(all);
+  }
+
+  /// استخراج الميتاداتا (صور الأغلفة + العنوان + الفنان)
+  Future<void> _extractMetadata(List<MediaItem> items) async {
+    // فقط الأغاني التي لا تملك صورة
+    final toProcess = items.where((it) => it.albumArt == null).toList();
+    if (toProcess.isEmpty) return;
+
+    int processed = 0;
+    for (final item in toProcess) {
+      if (!mounted) return;
+
+      try {
+        final meta = await MetadataService.read(item.path);
+
+        if (!mounted) return;
+
+        // تحديث الأغنية في القائمة
+        final idx = _allAudio.indexWhere((x) => x.path == item.path);
+        if (idx != -1 && meta.albumArtPath != null) {
+          setState(() {
+            _allAudio[idx] = MediaItem(
+              title: meta.title ?? item.title,
+              path: item.path,
+              album: meta.album ?? item.album,
+              artist: meta.artist,
+              albumArt: meta.albumArtPath,
+            );
+          });
+        }
+
+        processed++;
+
+        // تحديث كل 5 صور لعرض التقدم
+        if (processed % 5 == 0) {
+          if (mounted) setState(() {});
+        }
+      } catch (e) {
+        debugPrint('Metadata extract error: $e');
+      }
+    }
+
+    if (mounted) {
+      _sortAudio(_sortBy);
+      debugPrint('✅ Extracted metadata for $processed tracks');
+    }
   }
 
   void _sortAudio(String sortBy) {

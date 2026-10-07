@@ -6,9 +6,15 @@ class AudioBackgroundService {
     try {
       await JustAudioBackground.init(
         androidNotificationChannelId: 'com.mediahub.mediacenter.channel.audio',
-        androidNotificationChannelName: 'Media Center Playback',
+        androidNotificationChannelName: 'AR مشغل موسيقى & فيديوهات',
+        androidNotificationChannelDescription:
+            'تشغيل الصوتيات في الخلفية',
         androidNotificationOngoing: true,
-        androidStopForegroundOnPause: true,
+        androidStopForegroundOnPause: false,
+        preloadArtwork: true,
+        androidShowNotificationBadge: true,
+        fastForwardInterval: const Duration(seconds: 30),
+        rewindInterval: const Duration(seconds: 10),
       );
       debugPrint('✅ Background audio service initialized');
     } catch (e) {

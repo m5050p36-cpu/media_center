@@ -70,6 +70,12 @@ class PlayerProvider extends ChangeNotifier {
   // ═══ حفظ الموضع ═══
   Timer? _positionSaveTimer;
 
+  // ═══ A-B Repeat ═══
+  Duration? abStart;
+  Duration? abEnd;
+  bool abActive = false;
+  Timer? _abCheckTimer;
+
   MediaItem? get currentAudio =>
       audioQueue.isEmpty ? null : audioQueue[audioIndex];
 
@@ -330,6 +336,66 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ═══════════════════════════════════════════════
+  // A-B Repeat
+  // ═══════════════════════════════════════════════
+  void setABStart() {
+    abStart = audioPlayer.position;
+    if (abEnd != null && abEnd! <= abStart!) abEnd = null;
+    notifyListeners();
+  }
+
+  void setABEnd() {
+    abEnd = audioPlayer.position;
+    if (abStart != null && abEnd! <= abStart!) abStart = null;
+    notifyListeners();
+  }
+
+  void toggleAB() {
+    if (abStart == null || abEnd == null) return;
+    abActive = !abActive;
+
+    if (abActive) {
+      _abCheckTimer?.cancel();
+      _abCheckTimer = Timer.periodic(
+        const Duration(milliseconds: 200),
+        (_) {
+          if (!abActive || abStart == null || abEnd == null) return;
+          final pos = audioPlayer.position;
+          if (pos >= abEnd!) {
+            audioPlayer.seek(abStart!);
+          }
+        },
+      );
+    } else {
+      _abCheckTimer?.cancel();
+      _abCheckTimer = null;
+    }
+    notifyListeners();
+  }
+
+  void clearAB() {
+    abStart = null;
+    abEnd = null;
+    abActive = false;
+    _abCheckTimer?.cancel();
+    _abCheckTimer = null;
+    notifyListeners();
+  }
+
+  String? get abStatus {
+    if (abStart == null && abEnd == null) return null;
+    if (abStart == null) return 'A: -- • B: ${_fmt(abEnd!)}';
+    if (abEnd == null) return 'A: ${_fmt(abStart!)} • B: --';
+    return 'A: ${_fmt(abStart!)} • B: ${_fmt(abEnd!)}${abActive ? " ●" : ""}';
+  }
+
+  String _fmt(Duration d) {
+    final m = d.inMinutes.toString().padLeft(2, '0');
+    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
   Future<void> seek(Duration position) async {
     await audioPlayer.seek(position);
   }
@@ -482,6 +548,7 @@ class PlayerProvider extends ChangeNotifier {
   void dispose() {
     _positionSaveTimer?.cancel();
     _sleepTimer?.cancel();
+    _abCheckTimer?.cancel();
     audioPlayer.dispose();
     videoController?.dispose();
     super.dispose();

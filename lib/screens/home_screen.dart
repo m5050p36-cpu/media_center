@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/banner_carousel.dart';
 import 'audio_screen.dart';
+import 'unified_search_screen.dart';
 import 'video_screen.dart';
 import 'login_screen.dart';
 import '../widgets/version_check_dialog.dart';
@@ -31,6 +32,19 @@ class HomeScreen extends StatelessWidget {
       drawer: const AppDrawer(),
       appBar: AppBar(
         title: Text(t.get('app_name')),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: 'بحث موحد',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const UnifiedSearchScreen()),
+              );
+            },
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),

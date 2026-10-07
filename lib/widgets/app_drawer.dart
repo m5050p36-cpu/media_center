@@ -144,18 +144,26 @@ class AppDrawer extends StatelessWidget {
                   const Divider(),
 
                   // ═══ الثيم ═══
-                  SwitchListTile(
-                    secondary: Icon(
+                  ListTile(
+                    leading: Icon(
                       theme.isDark ? Icons.dark_mode : Icons.light_mode,
+                      color: theme.accentColor,
                     ),
                     title: Text(t.get('theme')),
-                    subtitle: Text(
-                      theme.isDark
-                          ? t.get('dark_mode')
-                          : t.get('light_mode'),
+                    subtitle: Text(theme.label),
+                    trailing: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: theme.accentColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
                     ),
-                    value: theme.isDark,
-                    onChanged: (_) => theme.toggle(),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showThemePicker(context, theme);
+                    },
                   ),
 
                   // ═══ اللغة ═══
@@ -301,4 +309,115 @@ class AppDrawer extends StatelessWidget {
       ),
     );
   }
+
+
+  void _showThemePicker(BuildContext context, ThemeProvider theme) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).cardTheme.color,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'اختر الثيم',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              ...AppThemeType.values.map((type) {
+                final selected = theme.type == type;
+                return ListTile(
+                  leading: _themeDot(type),
+                  title: Text(_themeName(type)),
+                  trailing: selected
+                      ? Icon(Icons.check_circle,
+                          color: theme.accentColor)
+                      : null,
+                  onTap: () async {
+                    await theme.setTheme(type);
+                    if (context.mounted) Navigator.pop(context);
+                  },
+                );
+              }),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _themeDot(AppThemeType type) {
+    Color color;
+    switch (type) {
+      case AppThemeType.dark:
+        color = const Color(0xFF6C63FF);
+        break;
+      case AppThemeType.light:
+        color = const Color(0xFFF5F5FA);
+        break;
+      case AppThemeType.amoled:
+        color = const Color(0xFF000000);
+        break;
+      case AppThemeType.ocean:
+        color = const Color(0xFF0EA5E9);
+        break;
+      case AppThemeType.sunset:
+        color = const Color(0xFFF97316);
+        break;
+      case AppThemeType.forest:
+        color = const Color(0xFF10B981);
+        break;
+      case AppThemeType.rose:
+        color = const Color(0xFFEC4899);
+        break;
+    }
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.grey.withValues(alpha: 0.3),
+          width: 2,
+        ),
+      ),
+    );
+  }
+
+  String _themeName(AppThemeType type) {
+    switch (type) {
+      case AppThemeType.dark:
+        return 'داكن (افتراضي)';
+      case AppThemeType.light:
+        return 'نهاري';
+      case AppThemeType.amoled:
+        return 'AMOLED (أسود كامل)';
+      case AppThemeType.ocean:
+        return 'محيطي (أزرق)';
+      case AppThemeType.sunset:
+        return 'غروب (برتقالي)';
+      case AppThemeType.forest:
+        return 'غابة (أخضر)';
+      case AppThemeType.rose:
+        return 'وردي';
+    }
+  }
+
 }

@@ -528,7 +528,176 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
             p.audioPlayer.seek(Duration.zero);
           },
         ),
+
+        // A-B Repeat
+        _buildPillButton(
+          icon: p.abActive ? Icons.repeat_on : Icons.repeat,
+          label: p.abActive ? 'A-B ●' : 'A-B',
+          color: p.abActive
+              ? Colors.green
+              : (p.abStart != null ? AppTheme.primary : null),
+          onTap: () => _showABDialog(p),
+        ),
       ],
+    );
+  }
+
+  // ═══════════════════════════════════════════════
+  // حوار A-B Repeat
+  // ═══════════════════════════════════════════════
+  void _showABDialog(PlayerProvider p) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).cardTheme.color,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSt) => Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.repeat, color: AppTheme.primary),
+                  SizedBox(width: 8),
+                  Text(
+                    'تكرار مقطع (A-B)',
+                    style: TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              // عرض الحالة
+              if (p.abStatus != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    p.abStatus!,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 20),
+              // أزرار التحكم
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _abBtn(
+                    icon: Icons.flag_outlined,
+                    label: 'تحديد A',
+                    color: p.abStart != null ? Colors.green : null,
+                    onTap: () {
+                      p.setABStart();
+                      setSt(() {});
+                    },
+                  ),
+                  _abBtn(
+                    icon: Icons.flag,
+                    label: 'تحديد B',
+                    color: p.abEnd != null ? Colors.redAccent : null,
+                    onTap: () {
+                      p.setABEnd();
+                      setSt(() {});
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // تشغيل / إلغاء
+              Row(
+                children: [
+                  if (p.abStart != null && p.abEnd != null)
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          p.toggleAB();
+                          setSt(() {});
+                        },
+                        icon: Icon(p.abActive
+                            ? Icons.pause
+                            : Icons.play_arrow),
+                        label: Text(p.abActive ? 'إيقاف التكرار' : 'تشغيل التكرار'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: p.abActive
+                              ? Colors.orangeAccent
+                              : Colors.green,
+                        ),
+                      ),
+                    ),
+                  if (p.abStart != null && p.abEnd != null)
+                    const SizedBox(width: 10),
+                  if (p.abStart != null || p.abEnd != null)
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        p.clearAB();
+                        setSt(() {});
+                      },
+                      icon: const Icon(Icons.close),
+                      label: const Text('مسح'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.redAccent,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '💡 اضغط "تحديد A" عند نقطة البداية، ثم "تحديد B" عند نقطة النهاية',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _abBtn({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    Color? color,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        decoration: BoxDecoration(
+          color: (color ?? AppTheme.primary).withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: (color ?? AppTheme.primary).withValues(alpha: 0.5),
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color ?? AppTheme.primary, size: 28),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: color ?? AppTheme.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

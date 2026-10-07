@@ -1,12 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class ThemeProvider extends ChangeNotifier {
-  static const _key = 'theme_mode_v1';
-  ThemeMode _mode = ThemeMode.dark;
+enum AppThemeType {
+  dark,      // الافتراضي
+  light,     // نهاري
+  amoled,    // أسود كامل
+  ocean,     // أزرق محيطي
+  sunset,    // غروب
+  forest,    // غابة
+  rose,      // وردي
+}
 
-  ThemeMode get mode => _mode;
-  bool get isDark => _mode == ThemeMode.dark;
+class ThemeProvider extends ChangeNotifier {
+  static const _key = 'theme_type_v2';
+  AppThemeType _type = AppThemeType.dark;
+
+  AppThemeType get type => _type;
+  bool get isDark => _type != AppThemeType.light;
 
   ThemeProvider() {
     _load();
@@ -15,20 +25,54 @@ class ThemeProvider extends ChangeNotifier {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final v = prefs.getString(_key);
-    if (v == 'light') {
-      _mode = ThemeMode.light;
-    } else if (v == 'dark') {
-      _mode = ThemeMode.dark;
-    } else {
-      _mode = ThemeMode.dark;
+    if (v != null) {
+      _type = AppThemeType.values.firstWhere(
+        (t) => t.name == v,
+        orElse: () => AppThemeType.dark,
+      );
     }
     notifyListeners();
   }
 
-  Future<void> toggle() async {
-    _mode = _mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+  Future<void> setTheme(AppThemeType type) async {
+    _type = type;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_key, _mode == ThemeMode.dark ? 'dark' : 'light');
+    await prefs.setString(_key, type.name);
     notifyListeners();
+  }
+
+  /// للتوافق مع الكود القديم
+  ThemeMode get mode => _type == AppThemeType.light
+      ? ThemeMode.light
+      : ThemeMode.dark;
+
+  Future<void> toggle() async {
+    await setTheme(_type == AppThemeType.light
+        ? AppThemeType.dark
+        : AppThemeType.light);
+  }
+
+  String get label {
+    switch (_type) {
+      case AppThemeType.dark: return 'داكن';
+      case AppThemeType.light: return 'نهاري';
+      case AppThemeType.amoled: return 'AMOLED';
+      case AppThemeType.ocean: return 'محيطي';
+      case AppThemeType.sunset: return 'غروب';
+      case AppThemeType.forest: return 'غابة';
+      case AppThemeType.rose: return 'وردي';
+    }
+  }
+
+  Color get accentColor {
+    switch (_type) {
+      case AppThemeType.dark: return const Color(0xFF6C63FF);
+      case AppThemeType.light: return const Color(0xFF6C63FF);
+      case AppThemeType.amoled: return const Color(0xFF6C63FF);
+      case AppThemeType.ocean: return const Color(0xFF0EA5E9);
+      case AppThemeType.sunset: return const Color(0xFFF97316);
+      case AppThemeType.forest: return const Color(0xFF10B981);
+      case AppThemeType.rose: return const Color(0xFFEC4899);
+    }
   }
 }
