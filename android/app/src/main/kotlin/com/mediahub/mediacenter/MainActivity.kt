@@ -5,11 +5,11 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.util.Rational
-import io.flutter.embedding.android.FlutterActivity
+import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity : FlutterActivity() {
+class MainActivity : AudioServiceActivity() {
 
     private val CHANNEL = "com.mediahub.mediacenter/pip"
     private var isPipMode = false
@@ -35,11 +35,9 @@ class MainActivity : FlutterActivity() {
                             try {
                                 val ratioX = call.argument<Int>("aspectX") ?: 16
                                 val ratioY = call.argument<Int>("aspectY") ?: 9
-
                                 val params = PictureInPictureParams.Builder()
                                     .setAspectRatio(Rational(ratioX, ratioY))
                                     .build()
-
                                 enterPictureInPictureMode(params)
                                 result.success(true)
                             } catch (e: Exception) {

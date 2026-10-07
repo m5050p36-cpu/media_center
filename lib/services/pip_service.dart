@@ -3,19 +3,26 @@ import 'package:flutter/services.dart';
 
 class PipService {
   static const _channel = MethodChannel('com.mediahub.mediacenter/pip');
+  static bool? _cachedAvailability;
 
-  /// هل الجهاز يدعم PiP؟
   static Future<bool> isAvailable() async {
+    if (_cachedAvailability != null) return _cachedAvailability!;
     try {
       final result = await _channel.invokeMethod<bool>('isPiPAvailable');
-      return result ?? false;
+      _cachedAvailability = result ?? false;
+      debugPrint('✅ PiP available: $_cachedAvailability');
+      return _cachedAvailability!;
+    } on MissingPluginException {
+      debugPrint('❌ PiP: MethodChannel not registered');
+      _cachedAvailability = false;
+      return false;
     } catch (e) {
-      debugPrint('PiP check error: $e');
+      debugPrint('❌ PiP check error: $e');
+      _cachedAvailability = false;
       return false;
     }
   }
 
-  /// الدخول لـ PiP فوراً
   static Future<bool> enterPip({
     int aspectX = 16,
     int aspectY = 9,
@@ -25,7 +32,7 @@ class PipService {
         'aspectX': aspectX,
         'aspectY': aspectY,
       });
-      debugPrint('✅ PiP enter result: $result');
+      debugPrint('✅ PiP enter: $result');
       return result ?? false;
     } catch (e) {
       debugPrint('❌ PiP enter error: $e');
@@ -33,7 +40,6 @@ class PipService {
     }
   }
 
-  /// تفعيل الدخول التلقائي عند تصغير التطبيق (Android 12+)
   static Future<bool> setAutoEnter(bool enabled) async {
     try {
       final result = await _channel.invokeMethod<bool>('setAutoEnter', {
@@ -46,13 +52,11 @@ class PipService {
     }
   }
 
-  /// هل التطبيق حالياً في وضع PiP؟
   static Future<bool> isInPipMode() async {
     try {
       final result = await _channel.invokeMethod<bool>('isInPipMode');
       return result ?? false;
     } catch (e) {
-      debugPrint('isInPipMode error: $e');
       return false;
     }
   }

@@ -55,8 +55,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     BrightnessService.init();
     _brightnessValue = BrightnessService.current;
 
+    // فحص PiP في الخلفية (للأتمتة فقط)
     PipService.isAvailable().then((v) {
-      if (mounted) setState(() => _pipAvailable = v);
+      if (mounted) {
+        setState(() => _pipAvailable = v);
+        debugPrint('📺 PiP available in screen: $v');
+      }
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -322,25 +326,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          // 🔥 زر PiP
-          if (_pipAvailable)
-            IconButton(
-              icon: const Icon(Icons.picture_in_picture_alt,
-                  color: Colors.white70, size: 22),
-              tooltip: 'نافذة عائمة',
-              onPressed: () async {
-                final ok = await PipService.enterPip(
-                  aspectX: 16,
-                  aspectY: 9,
-                );
-                if (!ok && mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('PiP غير مدعوم على هذا الجهاز')),
-                  );
-                }
-              },
-            ),
+          // 🔥 زر PiP (يظهر دائماً)
+          IconButton(
+            icon: const Icon(Icons.picture_in_picture_alt,
+                color: Colors.white, size: 22),
+            tooltip: 'نافذة عائمة',
+            onPressed: _tryEnterPip,
+          ),
           IconButton(
             icon: const Icon(Icons.replay, color: Colors.white70, size: 20),
             onPressed: () {
@@ -350,6 +342,26 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         ],
       ),
     );
+  }
+
+  Future<void> _tryEnterPip() async {
+    final available = await PipService.isAvailable();
+    if (!available) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Picture-in-Picture غير مدعوم على هذا الجهاز'),
+          backgroundColor: Colors.orangeAccent,
+        ),
+      );
+      return;
+    }
+    final ok = await PipService.enterPip(aspectX: 16, aspectY: 9);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('فشل تفعيل PiP')),
+      );
+    }
   }
 
   Widget _buildCenterControls(PlayerProvider p) {
