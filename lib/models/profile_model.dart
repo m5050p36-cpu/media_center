@@ -15,6 +15,21 @@ class ProfileModel {
 
   bool get isAdmin => role == 'admin' || role == 'superuser';
 
+  ProfileModel copyWith({
+    String? email,
+    String? fullName,
+    String? avatarUrl,
+    String? role,
+  }) {
+    return ProfileModel(
+      id: id,
+      email: email ?? this.email,
+      fullName: fullName ?? this.fullName,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      role: role ?? this.role,
+    );
+  }
+
   factory ProfileModel.fromMap(Map<String, dynamic> map) => ProfileModel(
         id: map['id'] as String,
         email: map['email'] as String?,

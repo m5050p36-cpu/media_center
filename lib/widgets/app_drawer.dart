@@ -38,20 +38,16 @@ class AppDrawer extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircleAvatar(
-                    radius: 32,
-                    backgroundColor: Colors.white,
-                    child: Text(
-                      (auth.userName?.isNotEmpty == true
-                              ? auth.userName![0]
-                              : (auth.isGuest ? '?' : 'U'))
-                          .toUpperCase(),
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.primary,
-                      ),
+                  // ─── الصورة الرمزية ───
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
                     ),
+                    clipBehavior: Clip.antiAlias,
+                    child: _buildDrawerAvatar(auth),
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -100,7 +96,6 @@ class AppDrawer extends StatelessWidget {
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
-                  // الملف الشخصي
                   if (!auth.isGuest)
                     ListTile(
                       leading: const Icon(Icons.person_outline),
@@ -115,7 +110,6 @@ class AppDrawer extends StatelessWidget {
                       },
                     ),
 
-                  // لوحة الإدارة — للأدمن فقط
                   if (auth.isAdmin)
                     ListTile(
                       leading: const Icon(Icons.admin_panel_settings,
@@ -138,7 +132,6 @@ class AppDrawer extends StatelessWidget {
 
                   const Divider(),
 
-                  // الثيم
                   SwitchListTile(
                     secondary: Icon(
                       theme.isDark ? Icons.dark_mode : Icons.light_mode,
@@ -151,7 +144,6 @@ class AppDrawer extends StatelessWidget {
                     onChanged: (_) => theme.toggle(),
                   ),
 
-                  // اللغة
                   ListTile(
                     leading: const Icon(Icons.language),
                     title: Text(t.get('language')),
@@ -177,14 +169,12 @@ class AppDrawer extends StatelessWidget {
 
                   const Divider(),
 
-                  // حول
                   ListTile(
                     leading: const Icon(Icons.info_outline),
                     title: Text(t.get('about')),
-                    subtitle: const Text('v1.0.0'),
+                    subtitle: const Text('v1.0.1'),
                   ),
 
-                  // تسجيل الخروج / تسجيل الدخول
                   ListTile(
                     leading: Icon(
                       auth.isGuest ? Icons.login : Icons.logout,
@@ -220,12 +210,11 @@ class AppDrawer extends StatelessWidget {
                   const SizedBox(height: 8),
                   Center(
                     child: Text(
-                      'v1.0.0 • MediaHub',
+                      'v1.0.1 • AR Music & Video',
                       style: TextStyle(
                         fontSize: 11,
-                        color: isDark
-                            ? AppTheme.subDark
-                            : AppTheme.subLight,
+                        color:
+                            isDark ? AppTheme.subDark : AppTheme.subLight,
                       ),
                     ),
                   ),
@@ -234,6 +223,42 @@ class AppDrawer extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════
+  // الصورة الرمزية في الدرج
+  // ═══════════════════════════════════════════════
+  Widget _buildDrawerAvatar(AuthProvider auth) {
+    final url = auth.userAvatar;
+    if (url != null && url.isNotEmpty) {
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        loadingBuilder: (_, child, p) =>
+            p == null ? child : _drawerAvatarPlaceholder(auth),
+        errorBuilder: (_, __, ___) => _drawerAvatarPlaceholder(auth),
+      );
+    }
+    return _drawerAvatarPlaceholder(auth);
+  }
+
+  Widget _drawerAvatarPlaceholder(AuthProvider auth) {
+    return Container(
+      color: Colors.white,
+      child: Center(
+        child: Text(
+          (auth.userName?.isNotEmpty == true
+                  ? auth.userName![0]
+                  : (auth.isGuest ? '?' : 'U'))
+              .toUpperCase(),
+          style: const TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.primary,
+          ),
         ),
       ),
     );

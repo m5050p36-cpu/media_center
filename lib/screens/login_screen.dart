@@ -51,10 +51,11 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    alignment: Alignment.center,
+                  // ═══ الشعار (Logo) ═══
+                  Center(
                     child: Container(
-                      padding: const EdgeInsets.all(24),
+                      width: 140,
+                      height: 140,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: LinearGradient(
@@ -63,9 +64,26 @@ class _LoginScreenState extends State<LoginScreen> {
                             AppTheme.primary.withValues(alpha: 0.05),
                           ],
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.primary.withValues(alpha: 0.35),
+                            blurRadius: 30,
+                            spreadRadius: 4,
+                          ),
+                        ],
                       ),
-                      child: const Icon(Icons.play_circle_fill,
-                          size: 80, color: AppTheme.primary),
+                      padding: const EdgeInsets.all(6),
+                      child: ClipOval(
+                        child: Image.asset(
+                          'assets/icon/app_logo.png',
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.play_circle_fill,
+                            size: 80,
+                            color: AppTheme.primary,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),

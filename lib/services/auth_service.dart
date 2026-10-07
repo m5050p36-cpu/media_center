@@ -40,12 +40,7 @@ class AuthService {
   }
 
   Future<void> resetPassword(String email) async {
-    try {
-      await _client.auth.resetPasswordForEmail(email.trim());
-    } catch (e) {
-      debugPrint('resetPassword error: $e');
-      rethrow;
-    }
+    await _client.auth.resetPasswordForEmail(email.trim());
   }
 
   Future<void> signOut() async {
@@ -69,6 +64,7 @@ class AuthService {
 
       if (data != null) return ProfileModel.fromMap(data);
 
+      // إنشاء profile تلقائياً إذا لم يوجد
       debugPrint('⚠️ No profile — creating for ${user.email}');
       final fallbackName = (user.userMetadata?['full_name'] as String?) ??
           (user.email ?? '').split('@').first;
@@ -99,6 +95,40 @@ class AuthService {
     } catch (e) {
       debugPrint('fetchProfile error: $e');
       return null;
+    }
+  }
+
+  /// 🔥 تحديث الملف الشخصي (الاسم + الصورة)
+  Future<void> updateProfile({
+    String? fullName,
+    String? avatarUrl,
+  }) async {
+    final user = currentUser;
+    if (user == null) {
+      throw Exception('لا يوجد مستخدم مسجل');
+    }
+
+    final updates = <String, dynamic>{
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+
+    if (fullName != null) updates['full_name'] = fullName.trim();
+    if (avatarUrl != null) updates['avatar_url'] = avatarUrl;
+
+    debugPrint('📝 Updating profile: $updates');
+
+    await _client.from('profiles').update(updates).eq('id', user.id);
+
+    // تحديث metadata أيضاً
+    try {
+      await _client.auth.updateUser(
+        UserAttributes(data: {
+          if (fullName != null) 'full_name': fullName.trim(),
+          if (avatarUrl != null) 'avatar_url': avatarUrl,
+        }),
+      );
+    } catch (e) {
+      debugPrint('update metadata error: $e');
     }
   }
 }

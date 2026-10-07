@@ -159,4 +159,52 @@ class ImageService {
       debugPrint('delete error: $e');
     }
   }
+
+  // ═══════ رفع صورة الأفاتار ═══════
+  static Future<String> uploadAvatar(
+    PickedImageInfo info,
+    String userId,
+  ) async {
+    final client = SupabaseService.client;
+    final ext = info.file.path.split('.').last.toLowerCase();
+    final safeExt =
+        ['jpg', 'jpeg', 'png', 'webp'].contains(ext) ? ext : 'jpg';
+
+    // المسار: avatars/{userId}/avatar.{ext}
+    final path = '$userId/avatar.$safeExt';
+    final bytes = await info.file.readAsBytes();
+
+    debugPrint('📤 Uploading avatar ${info.sizeText} → $path');
+
+    await client.storage.from('avatars').uploadBinary(
+          path,
+          bytes,
+          fileOptions: FileOptions(
+            contentType: 'image/jpeg',
+            upsert: true,
+            cacheControl: '3600',
+          ),
+        );
+
+    final publicUrl = client.storage.from('avatars').getPublicUrl(path);
+    // إضافة timestamp لتجنب cache
+    final url = '$publicUrl?v=${DateTime.now().millisecondsSinceEpoch}';
+    debugPrint('✅ Avatar uploaded: $url');
+    return url;
+  }
+
+  // ═══════ حذف الأفاتار ═══════
+  static Future<void> deleteAvatar(String userId) async {
+    try {
+      final client = SupabaseService.client;
+      // حذف كل الملفات داخل المجلد
+      final files = await client.storage.from('avatars').list(path: userId);
+      if (files.isEmpty) return;
+      final paths = files.map((f) => '$userId/${f.name}').toList();
+      await client.storage.from('avatars').remove(paths);
+      debugPrint('🗑️ Avatar deleted');
+    } catch (e) {
+      debugPrint('deleteAvatar error: $e');
+    }
+  }
 }

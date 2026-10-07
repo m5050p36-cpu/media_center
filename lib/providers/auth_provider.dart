@@ -11,33 +11,27 @@ class AuthProvider extends ChangeNotifier {
   bool isGuest = true;
   bool loading = false;
   bool initialized = false;
-  String? error;
   bool isOffline = false;
+  String? error;
 
   AuthProvider() {
     _init();
   }
 
   Future<void> _init() async {
-    // 1) التحقق من الجلسة المحلية أولاً (بدون شبكة)
     try {
       final session = SupabaseService.client.auth.currentSession;
       if (session != null) {
-        debugPrint('✅ Local session found: ${session.user.email}');
         isGuest = false;
-        // محاولة تحميل الملف الشخصي من الذاكرة أو من الشبكة
-        await _loadProfile(useCache: true);
-      } else {
-        debugPrint('ℹ️ No local session');
+        await _loadProfile();
       }
     } catch (e) {
-      debugPrint('Init session error: $e');
+      debugPrint('AuthProvider init error: $e');
     }
 
     initialized = true;
     notifyListeners();
 
-    // 2) الاستماع لتغيرات المصادقة مع معالج أخطاء إجباري
     try {
       SupabaseService.client.auth.onAuthStateChange.listen(
         (data) async {
@@ -47,8 +41,6 @@ class AuthProvider extends ChangeNotifier {
               isOffline = false;
               await _loadProfile();
             } else {
-              // لا نعتبر المستخدم زائراً إذا كان لديه جلسة محلية سابقة
-              // وهذا يحدث فقط عند signOut فعلي
               isGuest = true;
               profile = null;
             }
@@ -57,11 +49,9 @@ class AuthProvider extends ChangeNotifier {
             debugPrint('AuthState handler error: $e');
           }
         },
-        // 🔥 إجباري: معالج أخطاء الشبكة
         onError: (error, stackTrace) {
-          debugPrint('⚠️ Auth stream network error (offline mode): $error');
+          debugPrint('⚠️ Auth stream error (offline): $error');
           isOffline = true;
-          // لا نغير حالة المستخدم — نبقيه مسجلاً
           notifyListeners();
         },
       );
@@ -70,25 +60,12 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _loadProfile({bool useCache = false}) async {
+  Future<void> _loadProfile() async {
     try {
       profile = await _auth.fetchProfile();
       isOffline = false;
     } catch (e) {
       debugPrint('loadProfile error: $e');
-      // إذا فشل تحميل الملف الشخصي بسبب الشبكة، نستخدم نسخة مخزنة
-      if (profile == null) {
-        final user = SupabaseService.client.auth.currentUser;
-        if (user != null) {
-          // إنشاء بروفايل مؤقت من بيانات المستخدم الحالية
-          profile = ProfileModel(
-            id: user.id,
-            email: user.email,
-            fullName: user.userMetadata?['full_name'] as String?,
-            role: 'user',
-          );
-        }
-      }
       isOffline = true;
     }
     notifyListeners();
@@ -102,6 +79,27 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> resetPassword(String email) =>
       _run(() => _auth.resetPassword(email));
+
+  /// 🔥 تحديث الملف الشخصي
+  Future<bool> updateProfile({
+    String? fullName,
+    String? avatarUrl,
+  }) async {
+    try {
+      loading = true;
+      notifyListeners();
+      await _auth.updateProfile(fullName: fullName, avatarUrl: avatarUrl);
+      await _loadProfile();
+      loading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      error = e.toString();
+      loading = false;
+      notifyListeners();
+      return false;
+    }
+  }
 
   Future<bool> _run(Future<dynamic> Function() action) async {
     loading = true;
@@ -125,14 +123,13 @@ class AuthProvider extends ChangeNotifier {
       return true;
     } on AuthException catch (e) {
       error = _translateAuthError(e.message);
-      debugPrint('AuthException: ${e.message}');
     } catch (e, st) {
       debugPrint('error: $e\n$st');
       final msg = e.toString();
       if (msg.contains('SocketException') ||
           msg.contains('Connection') ||
           msg.contains('HandshakeException')) {
-        error = 'لا يوجد اتصال بالإنترنت — تحقق من الشبكة';
+        error = 'لا يوجد اتصال بالإنترنت';
         isOffline = true;
       } else if (msg.contains('Invalid login credentials')) {
         error = 'البريد أو كلمة المرور غير صحيحة';
@@ -153,24 +150,12 @@ class AuthProvider extends ChangeNotifier {
     if (m.contains('invalid login credentials')) {
       return 'البريد أو كلمة المرور غير صحيحة';
     }
-    if (m.contains('email not confirmed')) {
-      return 'البريد غير مؤكد';
-    }
-    if (m.contains('user already registered') ||
-        m.contains('already been registered')) {
-      return 'البريد مسجل مسبقاً';
-    }
+    if (m.contains('email not confirmed')) return 'البريد غير مؤكد';
+    if (m.contains('already been registered')) return 'البريد مسجل مسبقاً';
     if (m.contains('password should be at least')) {
       return 'كلمة المرور قصيرة جداً';
     }
-    if (m.contains('unable to validate email') ||
-        m.contains('invalid email') ||
-        m.contains('invalid format')) {
-      return 'صيغة البريد غير صحيحة';
-    }
-    if (m.contains('rate limit') || m.contains('too many')) {
-      return 'محاولات كثيرة — انتظر قليلاً';
-    }
+    if (m.contains('invalid email')) return 'صيغة البريد غير صحيحة';
     return msg;
   }
 
@@ -184,7 +169,7 @@ class AuthProvider extends ChangeNotifier {
     try {
       await _auth.signOut();
     } catch (e) {
-      debugPrint('signOut error (offline?): $e');
+      debugPrint('signOut error: $e');
     }
     isGuest = true;
     profile = null;
@@ -194,4 +179,5 @@ class AuthProvider extends ChangeNotifier {
   bool get isAdmin => profile?.isAdmin ?? false;
   String? get userEmail => profile?.email ?? _auth.currentUser?.email;
   String? get userName => profile?.fullName;
+  String? get userAvatar => profile?.avatarUrl;
 }
