@@ -44,7 +44,7 @@ class _AudioScreenState extends State<AudioScreen>
   }
 
   // ═══════════════════════════════════════════════
-  // تحميل الملفات (مع التخزين المؤقت)
+  // تحميل الملفات
   // ═══════════════════════════════════════════════
   Future<void> _loadFiles() async {
     final cached = await CacheService.loadAudioFiles();
@@ -105,6 +105,7 @@ class _AudioScreenState extends State<AudioScreen>
         title: m['title'] as String,
         path: m['path'] as String,
         album: (m['folder'] as String?) ?? 'Other',
+        albumArt: m['albumArt'] as String?,
       );
       all.add(item);
       final f = (m['folder'] as String?) ?? 'Other';
@@ -159,7 +160,7 @@ class _AudioScreenState extends State<AudioScreen>
   }
 
   // ═══════════════════════════════════════════════
-  // 🔥 تشغيل الأغنية مع معالجة أخطاء + Fallback
+  // تشغيل الأغنية
   // ═══════════════════════════════════════════════
   Future<void> _playTrack(
     List<MediaItem> items,
@@ -194,6 +195,32 @@ class _AudioScreenState extends State<AudioScreen>
         MaterialPageRoute(builder: (_) => const FullPlayerScreen()),
       );
     }
+  }
+
+  // ═══════════════════════════════════════════════
+  // 🔥 فتح الشاشة الكاملة من صورة الغلاف
+  // ═══════════════════════════════════════════════
+  Future<void> _openFromArt(
+    List<MediaItem> items,
+    int index,
+    PlayerProvider p,
+  ) async {
+    final item = items[index];
+    final isCurrent = p.currentAudio?.path == item.path;
+
+    // إذا كانت هذه الأغنية تعمل حالياً → افتح الشاشة الكاملة مباشرة
+    if (isCurrent) {
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const FullPlayerScreen()),
+        );
+      }
+      return;
+    }
+
+    // وإلا: شغّل الأغنية ثم افتح الشاشة الكاملة
+    await _playTrack(items, index, p);
   }
 
   @override
@@ -311,6 +338,70 @@ class _AudioScreenState extends State<AudioScreen>
   }
 
   // ═══════════════════════════════════════════════
+  // 🔥 صورة الغلاف (Album Art)
+  // ═══════════════════════════════════════════════
+  Widget _buildAlbumArt(MediaItem item, {double size = 52}) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primary.withValues(alpha: 0.25),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: _albumArtImage(item),
+    );
+  }
+
+  Widget _albumArtImage(MediaItem item) {
+    final art = item.albumArt;
+    if (art == null || art.isEmpty) {
+      return _placeholderArt();
+    }
+
+    // رابط إنترنت
+    if (art.startsWith('http')) {
+      return Image.network(
+        art,
+        fit: BoxFit.cover,
+        loadingBuilder: (_, child, p) =>
+            p == null ? child : _placeholderArt(),
+        errorBuilder: (_, __, ___) => _placeholderArt(),
+      );
+    }
+
+    // ملف محلي
+    return Image.file(
+      File(art),
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => _placeholderArt(),
+    );
+  }
+
+  Widget _placeholderArt() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [AppTheme.primary, AppTheme.accent],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: const Icon(
+        Icons.music_note,
+        color: Colors.white,
+        size: 26,
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════
   // قائمة الأغاني
   // ═══════════════════════════════════════════════
   Widget _listView(
@@ -354,9 +445,34 @@ class _AudioScreenState extends State<AudioScreen>
         return ListTile(
           tileColor:
               isCurrent ? AppTheme.primary.withValues(alpha: 0.15) : null,
-          leading: Icon(
-            isCurrent ? Icons.equalizer : Icons.music_note,
-            color: isCurrent ? AppTheme.primary : null,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          // 🔥 الصورة بدل الأيقونة — قابلة للضغط لفتح الشاشة الكاملة
+          leading: GestureDetector(
+            onTap: () => _openFromArt(items, i, p),
+            child: Hero(
+              tag: 'album_art_${it.path}',
+              child: Stack(
+                children: [
+                  _buildAlbumArt(it),
+                  // شارة "قيد التشغيل" على الصورة
+                  if (isCurrent)
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow,
+                          color: Colors.white,
+                          size: 26,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
           title: Text(
             it.title,
@@ -367,14 +483,12 @@ class _AudioScreenState extends State<AudioScreen>
               color: isCurrent ? AppTheme.primary : null,
             ),
           ),
-          subtitle: it.album != null
-              ? Text(
-                  it.album!,
-                  style: const TextStyle(fontSize: 11),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                )
-              : null,
+          subtitle: Text(
+            it.album ?? '',
+            style: const TextStyle(fontSize: 11),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           trailing: IconButton(
             icon: Icon(
               isFav ? Icons.favorite : Icons.favorite_border,
@@ -413,11 +527,14 @@ class _AudioScreenState extends State<AudioScreen>
           subtitle: Text('${e.value.length} ${t.get('files')}'),
           children: e.value.map((it) {
             final isFav = p.isFavorite(it.path);
+            final idx = e.value.indexOf(it);
             return ListTile(
               contentPadding:
-                  const EdgeInsets.only(left: 40, right: 16),
-              leading: const Icon(Icons.music_note,
-                  size: 18, color: AppTheme.primary),
+                  const EdgeInsets.only(left: 40, right: 16, top: 4, bottom: 4),
+              leading: GestureDetector(
+                onTap: () => _openFromArt(e.value, idx, p),
+                child: _buildAlbumArt(it, size: 44),
+              ),
               title: Text(
                 it.title,
                 maxLines: 1,
@@ -433,7 +550,7 @@ class _AudioScreenState extends State<AudioScreen>
                   await p.toggleFavorite(it.path);
                 },
               ),
-              onTap: () => _playTrack(e.value, e.value.indexOf(it), p),
+              onTap: () => _playTrack(e.value, idx, p),
             );
           }).toList(),
         );
@@ -442,7 +559,7 @@ class _AudioScreenState extends State<AudioScreen>
   }
 
   // ═══════════════════════════════════════════════
-  // شريط المشغل السفلي
+  // شريط المشغل السفلي (الأصلي — بجميع الميزات)
   // ═══════════════════════════════════════════════
   Widget _playerBar(PlayerProvider p, S t) {
     return Container(
@@ -571,19 +688,14 @@ class _AudioScreenState extends State<AudioScreen>
                 onPressed: () => _showSleepTimerDialog(p),
               ),
               IconButton(
-                tooltip: 'مفضلة',
-                icon: Icon(
-                  p.isFavorite(p.currentAudio?.path ?? '')
-                      ? Icons.favorite
-                      : Icons.favorite_border,
-                  color: p.isFavorite(p.currentAudio?.path ?? '')
-                      ? Colors.redAccent
-                      : null,
-                  size: 20,
-                ),
-                onPressed: () async {
-                  final path = p.currentAudio?.path;
-                  if (path != null) await p.toggleFavorite(path);
+                tooltip: 'مفتوح',
+                icon: const Icon(Icons.open_in_full, size: 20),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const FullPlayerScreen()),
+                  );
                 },
               ),
             ],
@@ -613,9 +725,9 @@ class _AudioScreenState extends State<AudioScreen>
       case AudioRepeatMode.once:
         return Icons.repeat_one;
       case AudioRepeatMode.twice:
-        return Icons.repeat_on;
+        return Icons.repeat;
       case AudioRepeatMode.thrice:
-        return Icons.repeat_on;
+        return Icons.repeat;
       case AudioRepeatMode.loopAll:
         return Icons.all_inclusive;
     }
@@ -665,7 +777,7 @@ class _AudioScreenState extends State<AudioScreen>
                 children: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
                     .map((v) => ChoiceChip(
                           label: Text('${v}x'),
-                          selected: p.playbackSpeed == v,
+                          selected: (p.playbackSpeed - v).abs() < 0.01,
                           onSelected: (_) async {
                             await p.setPlaybackSpeed(v);
                             setSt(() {});
