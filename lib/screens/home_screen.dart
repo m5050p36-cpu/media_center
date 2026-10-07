@@ -8,6 +8,8 @@ import '../widgets/banner_carousel.dart';
 import 'audio_screen.dart';
 import 'video_screen.dart';
 import 'login_screen.dart';
+import '../widgets/version_check_dialog.dart';
+import '../screens/about_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -16,6 +18,14 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final t = I18n.of(context);
+
+    // ═══ فحص الإصدار عند أول بناء ═══
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      VersionCheckDialog.check(
+        context,
+        currentVersionCode: AboutScreen.appVersionCode,
+      );
+    });
 
     return Scaffold(
       drawer: const AppDrawer(),

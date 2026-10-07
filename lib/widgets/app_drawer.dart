@@ -4,8 +4,12 @@ import '../i18n/i18n.dart';
 import '../providers/auth_provider.dart';
 import '../providers/language_provider.dart';
 import '../providers/theme_provider.dart';
+import '../screens/about_screen.dart';
 import '../screens/admin_banners_screen.dart';
+import '../screens/admin_users_screen.dart';
+import '../screens/admin_versions_screen.dart';
 import '../screens/login_screen.dart';
+import '../screens/privacy_policy_screen.dart';
 import '../screens/profile_screen.dart';
 import '../theme/app_theme.dart';
 
@@ -38,7 +42,6 @@ class AppDrawer extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ─── الصورة الرمزية ───
                   Container(
                     width: 64,
                     height: 64,
@@ -91,11 +94,11 @@ class AppDrawer extends StatelessWidget {
               ),
             ),
 
-            // ═══ العناصر ═══
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
+                  // ═══ الملف الشخصي ═══
                   if (!auth.isGuest)
                     ListTile(
                       leading: const Icon(Icons.person_outline),
@@ -110,7 +113,21 @@ class AppDrawer extends StatelessWidget {
                       },
                     ),
 
-                  if (auth.isAdmin)
+                  // ═══ لوحة الأدمن ═══
+                  if (auth.isAdmin) ...[
+                    const Divider(),
+                    Padding(
+                      padding: const EdgeInsets.only(
+                          right: 16, top: 12, bottom: 4),
+                      child: Text(
+                        'لوحة الإدارة',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.primary.withValues(alpha: 0.9),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                     ListTile(
                       leading: const Icon(Icons.admin_panel_settings,
                           color: AppTheme.primary),
@@ -125,25 +142,68 @@ class AppDrawer extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (_) => const AdminBannersScreen()),
+                              builder: (_) =>
+                                  const AdminBannersScreen()),
                         );
                       },
                     ),
+                    ListTile(
+                      leading:
+                          const Icon(Icons.group, color: AppTheme.primary),
+                      title: const Text(
+                        'إدارة المستخدمين',
+                        style: TextStyle(
+                            color: AppTheme.primary,
+                            fontWeight: FontWeight.bold),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const AdminUsersScreen()),
+                        );
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.system_update_alt,
+                          color: AppTheme.primary),
+                      title: const Text(
+                        'إدارة الإصدارات',
+                        style: TextStyle(
+                            color: AppTheme.primary,
+                            fontWeight: FontWeight.bold),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  const AdminVersionsScreen()),
+                        );
+                      },
+                    ),
+                  ],
 
                   const Divider(),
 
+                  // ═══ الثيم ═══
                   SwitchListTile(
                     secondary: Icon(
                       theme.isDark ? Icons.dark_mode : Icons.light_mode,
                     ),
                     title: Text(t.get('theme')),
                     subtitle: Text(
-                      theme.isDark ? t.get('dark_mode') : t.get('light_mode'),
+                      theme.isDark
+                          ? t.get('dark_mode')
+                          : t.get('light_mode'),
                     ),
                     value: theme.isDark,
                     onChanged: (_) => theme.toggle(),
                   ),
 
+                  // ═══ اللغة ═══
                   ListTile(
                     leading: const Icon(Icons.language),
                     title: Text(t.get('language')),
@@ -169,12 +229,38 @@ class AppDrawer extends StatelessWidget {
 
                   const Divider(),
 
+                  // ═══ حول ═══
                   ListTile(
                     leading: const Icon(Icons.info_outline),
                     title: Text(t.get('about')),
-                    subtitle: const Text('v1.0.1'),
+                    subtitle: const Text('الإصدار 1.0.2'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const AboutScreen()),
+                      );
+                    },
                   ),
 
+                  // ═══ سياسة الخصوصية ═══
+                  ListTile(
+                    leading: const Icon(Icons.privacy_tip_outlined),
+                    title: const Text('سياسة الخصوصية'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const PrivacyPolicyScreen()),
+                      );
+                    },
+                  ),
+
+                  const Divider(),
+
+                  // ═══ تسجيل الخروج / الدخول ═══
                   ListTile(
                     leading: Icon(
                       auth.isGuest ? Icons.login : Icons.logout,
@@ -210,7 +296,7 @@ class AppDrawer extends StatelessWidget {
                   const SizedBox(height: 8),
                   Center(
                     child: Text(
-                      'v1.0.1 • AR Music & Video',
+                      'v1.0.2 • AR Music & Video',
                       style: TextStyle(
                         fontSize: 11,
                         color:
@@ -228,9 +314,6 @@ class AppDrawer extends StatelessWidget {
     );
   }
 
-  // ═══════════════════════════════════════════════
-  // الصورة الرمزية في الدرج
-  // ═══════════════════════════════════════════════
   Widget _buildDrawerAvatar(AuthProvider auth) {
     final url = auth.userAvatar;
     if (url != null && url.isNotEmpty) {
