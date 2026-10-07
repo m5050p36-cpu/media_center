@@ -23,7 +23,8 @@ class VideoPlayerScreen extends StatefulWidget {
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
 
-class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
+class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+    with WidgetsBindingObserver {
   bool _showControls = true;
   Timer? _hideTimer;
 
@@ -45,30 +46,51 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _seekForward = true;
   Timer? _seekIndicatorTimer;
 
+  bool _pipAvailable = false;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     BrightnessService.init();
     _brightnessValue = BrightnessService.current;
+
+    PipService.isAvailable().then((v) {
+      if (mounted) setState(() => _pipAvailable = v);
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadVideo();
     });
     _startHideTimer();
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _hideTimer?.cancel();
+    _seekIndicatorTimer?.cancel();
+    BrightnessService.reset();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    // عند التصغير → إذا كان PiP متاحاً، ادخل تلقائياً
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      if (_pipAvailable && mounted) {
+        PipService.enterPip(aspectX: 16, aspectY: 9);
+      }
+    }
+  }
+
   Future<void> _loadVideo() async {
     final p = context.read<PlayerProvider>();
     await p.loadVideoQueue(widget.items, startIndex: widget.startIndex);
     if (mounted) setState(() {});
-  }
-
-  @override
-  void dispose() {
-    _hideTimer?.cancel();
-    _seekIndicatorTimer?.cancel();
-    BrightnessService.reset();
-    context.read<PlayerProvider>().videoController?.pause();
-    super.dispose();
   }
 
   void _startHideTimer() {
@@ -83,9 +105,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (_showControls) _startHideTimer();
   }
 
-  // ═══════════════════════════════════════════════
-  // إيماءة السحب العمودي (سطوع / صوت)
-  // ═══════════════════════════════════════════════
+  // ═══════ Implicit Gestures ═══════
   void _onVerticalDragStart(DragStartDetails d) {
     final screenWidth = MediaQuery.of(context).size.width;
     _dragStartY = d.localPosition.dy;
@@ -120,9 +140,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _startHideTimer();
   }
 
-  // ═══════════════════════════════════════════════
-  // إيماءة السحب الأفقي (تقديم / إرجاع)
-  // ═══════════════════════════════════════════════
   void _onHorizontalDragStart(DragStartDetails d) {
     final p = context.read<PlayerProvider>();
     final c = p.videoController;
@@ -156,9 +173,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _startHideTimer();
   }
 
-  // ═══════════════════════════════════════════════
-  // النقر المزدوج (+/- 10 ثوانٍ)
-  // ═══════════════════════════════════════════════
   void _onDoubleTapDown(TapDownDetails d) {
     final screenWidth = MediaQuery.of(context).size.width;
     final c = context.read<PlayerProvider>().videoController;
@@ -167,7 +181,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final isForward = d.localPosition.dx > screenWidth / 2;
     const duration = Duration(seconds: 10);
 
-    // ✅ حساب الموضع الجديد بدون clamp على Duration
     final currentMs = c.value.position.inMilliseconds;
     final totalMs = c.value.duration.inMilliseconds;
     final offsetMs = duration.inMilliseconds;
@@ -226,15 +239,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             ),
 
             if (_isDraggingSeek) _buildSeekOverlay(c),
-
             if (_showSeekIndicator) _buildDoubleTapIndicator(),
-
             if (_isDraggingBrightness)
               _buildVerticalIndicator(
                 icon: Icons.brightness_6,
                 value: _brightnessValue,
               ),
-
             if (_isDraggingVolume)
               _buildVerticalIndicator(
                 icon: _volumeValue == 0 ? Icons.volume_off : Icons.volume_up,
@@ -293,12 +303,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           IconButton(
             icon: const Icon(Icons.arrow_back, color: Colors.white),
             onPressed: () async {
-              // ═══ تنظيف شامل قبل الخروج ═══
               BrightnessService.reset();
               final p = context.read<PlayerProvider>();
               await p.videoController?.pause();
               if (!mounted) return;
-              // العودة لقائمة الفيديوهات
               Navigator.of(context).pop();
             },
           ),
@@ -314,26 +322,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          FutureBuilder<bool>(
-            future: PipService.isAvailable(),
-            builder: (_, snap) {
-              if (snap.data != true) return const SizedBox.shrink();
-              return IconButton(
-                icon: const Icon(Icons.picture_in_picture_alt,
-                    color: Colors.white70, size: 20),
-                tooltip: 'نافذة عائمة',
-                onPressed: () async {
-                  final ok = await PipService.enterPip();
-                  if (!ok && mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('PiP غير مدعوم على هذا الجهاز')),
-                    );
-                  }
-                },
-              );
-            },
-          ),
+          // 🔥 زر PiP
+          if (_pipAvailable)
+            IconButton(
+              icon: const Icon(Icons.picture_in_picture_alt,
+                  color: Colors.white70, size: 22),
+              tooltip: 'نافذة عائمة',
+              onPressed: () async {
+                final ok = await PipService.enterPip(
+                  aspectX: 16,
+                  aspectY: 9,
+                );
+                if (!ok && mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('PiP غير مدعوم على هذا الجهاز')),
+                  );
+                }
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.replay, color: Colors.white70, size: 20),
             onPressed: () {

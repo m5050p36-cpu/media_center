@@ -513,8 +513,13 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> _playCurrentVideo() async {
     if (videoQueue.isEmpty) return;
     await videoController?.dispose();
-    videoController =
-        VideoPlayerController.file(File(videoQueue[videoIndex].path));
+    videoController = VideoPlayerController.file(
+      File(videoQueue[videoIndex].path),
+      videoPlayerOptions: VideoPlayerOptions(
+        allowBackgroundPlayback: true,
+        mixWithOthers: false,
+      ),
+    );
     videoController!.addListener(_videoListener);
     await videoController!.initialize();
     await videoController!.setLooping(videoLoop);
