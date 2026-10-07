@@ -8,6 +8,8 @@ import '../screens/about_screen.dart';
 import '../screens/admin_panel_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/privacy_policy_screen.dart';
+import '../screens/equalizer_screen.dart';
+import '../screens/file_manager_screen.dart';
 import '../screens/profile_screen.dart';
 import '../theme/app_theme.dart';
 
@@ -203,6 +205,38 @@ class AppDrawer extends StatelessWidget {
                         context,
                         MaterialPageRoute(
                             builder: (_) => const AboutScreen()),
+                      );
+                    },
+                  ),
+
+                  // ═══ إدارة الملفات ═══
+                  ListTile(
+                    leading: const Icon(Icons.folder_outlined,
+                        color: AppTheme.primary),
+                    title: const Text('إدارة الملفات'),
+                    subtitle: const Text('تصفح، أعد تسمية، احذف'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const FileManagerScreen()),
+                      );
+                    },
+                  ),
+
+                  // ═══ المعادل الصوتي ═══
+                  ListTile(
+                    leading: const Icon(Icons.graphic_eq,
+                        color: AppTheme.primary),
+                    title: const Text('المعادل الصوتي'),
+                    subtitle: const Text('تحكم بمستويات الصوت'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const EqualizerScreen()),
                       );
                     },
                   ),

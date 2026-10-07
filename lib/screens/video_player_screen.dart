@@ -6,6 +6,7 @@ import '../i18n/i18n.dart';
 import '../providers/language_provider.dart';
 import '../providers/player_provider.dart';
 import '../services/brightness_service.dart';
+import '../services/pip_service.dart';
 import '../theme/app_theme.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
@@ -312,6 +313,26 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
+          ),
+          FutureBuilder<bool>(
+            future: PipService.isAvailable(),
+            builder: (_, snap) {
+              if (snap.data != true) return const SizedBox.shrink();
+              return IconButton(
+                icon: const Icon(Icons.picture_in_picture_alt,
+                    color: Colors.white70, size: 20),
+                tooltip: 'نافذة عائمة',
+                onPressed: () async {
+                  final ok = await PipService.enterPip();
+                  if (!ok && mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('PiP غير مدعوم على هذا الجهاز')),
+                    );
+                  }
+                },
+              );
+            },
           ),
           IconButton(
             icon: const Icon(Icons.replay, color: Colors.white70, size: 20),

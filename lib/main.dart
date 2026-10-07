@@ -8,6 +8,7 @@ import 'providers/player_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/login_screen.dart';
 import 'services/supabase_service.dart';
+import 'services/widget_service.dart';
 import 'theme/app_theme.dart';
 import 'widgets/mini_player.dart';
 
@@ -18,6 +19,9 @@ Future<void> main() async {
     FlutterError.presentError(details);
     debugPrint('FlutterError: ${details.exception}');
   };
+
+  // تهيئة Widgets
+  await WidgetService.initialize();
 
   try {
     await JustAudioBackground.init(

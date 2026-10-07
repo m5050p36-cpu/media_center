@@ -7,6 +7,8 @@ import 'package:just_audio_background/just_audio_background.dart' as jab;
 import 'package:video_player/video_player.dart';
 import '../services/favorites_service.dart';
 import '../services/playback_state_service.dart';
+import '../services/equalizer_service.dart';
+import '../services/widget_service.dart';
 
 /// وضعيات تكرار الصوت
 enum AudioRepeatMode { none, once, twice, thrice, loopAll }
@@ -44,7 +46,11 @@ class MediaItem {
 
 class PlayerProvider extends ChangeNotifier {
   // ═══════════ Audio ═══════════
-  final AudioPlayer audioPlayer = AudioPlayer();
+  final AudioPlayer audioPlayer = AudioPlayer(
+    audioPipeline: AudioPipeline(
+      androidAudioEffects: [EqualizerService.equalizer],
+    ),
+  );
 
   List<MediaItem> audioQueue = [];
   List<MediaItem> originalAudioOrder = [];
@@ -91,6 +97,9 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
+    // تهيئة المعادل الصوتي
+    await EqualizerService.init();
+
     playbackSpeed = await PlaybackStateService.loadSpeed();
     await audioPlayer.setSpeed(playbackSpeed);
 
@@ -100,6 +109,11 @@ class PlayerProvider extends ChangeNotifier {
       if (state.processingState == ProcessingState.completed) {
         _onAudioComplete();
       }
+      _syncWidget();
+    });
+
+    audioPlayer.currentIndexStream.listen((_) {
+      _syncWidget();
     });
 
     _positionSaveTimer = Timer.periodic(const Duration(seconds: 5), (_) {
@@ -218,6 +232,21 @@ class PlayerProvider extends ChangeNotifier {
       debugPrint('❌ playSingle error: $e\n$st');
     }
     notifyListeners();
+  }
+
+  Future<void> _syncWidget() async {
+    try {
+      final current = currentAudio;
+      if (current == null) {
+        await WidgetService.clear();
+        return;
+      }
+      await WidgetService.updateWidget(
+        title: current.title,
+        artist: current.album ?? 'AR Player',
+        isPlaying: audioPlayer.playing,
+      );
+    } catch (_) {}
   }
 
   Future<void> _saveCurrentPosition() async {
