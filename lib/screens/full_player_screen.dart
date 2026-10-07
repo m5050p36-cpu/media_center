@@ -128,8 +128,11 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
         children: [
           const SizedBox(height: 12),
 
-          // ═══ صورة الغلاف ═══
-          _buildAlbumArt(current),
+          // ═══ صورة الغلاف (مع Hero Animation) ═══
+          Hero(
+            tag: 'album_art_${current.path}',
+            child: _buildAlbumArt(current),
+          ),
 
           const SizedBox(height: 30),
 
