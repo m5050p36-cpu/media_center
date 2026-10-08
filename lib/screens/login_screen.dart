@@ -152,6 +152,35 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 20),
 
+                  if (auth.isOffline)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.orangeAccent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: Colors.orangeAccent.withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.cloud_off,
+                              color: Colors.orangeAccent, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'وضع Offline — التطبيق يعمل من الذاكرة المحلية',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.orangeAccent.shade100,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
                   SizedBox(
                     height: 54,
                     child: ElevatedButton(

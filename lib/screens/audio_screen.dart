@@ -125,49 +125,53 @@ class _AudioScreenState extends State<AudioScreen>
     _extractMetadata(all);
   }
 
-  /// استخراج الميتاداتا (صور الأغلفة + العنوان + الفنان)
+  /// ⚡ استخراج الميتاداتا **بالتوازي** (5 بالتوازي)
   Future<void> _extractMetadata(List<MediaItem> items) async {
-    // فقط الأغاني التي لا تملك صورة
-    final toProcess = items.where((it) => it.albumArt == null).toList();
-    if (toProcess.isEmpty) return;
+    if (items.isEmpty) return;
 
-    int processed = 0;
-    for (final item in toProcess) {
+    final paths = items.map((it) => it.path).toList();
+
+    try {
+      final results = await MetadataService.readBatch(
+        paths,
+        concurrency: 5,
+        onProgress: (done, total) {
+          // تحديث كل 10 عناصر
+          if (done % 10 == 0) {
+            debugPrint('📊 Metadata progress: $done/$total');
+          }
+        },
+      );
+
       if (!mounted) return;
 
-      try {
-        final meta = await MetadataService.read(item.path);
-
-        if (!mounted) return;
-
-        // تحديث الأغنية في القائمة
-        final idx = _allAudio.indexWhere((x) => x.path == item.path);
-        if (idx != -1 && meta.albumArtPath != null) {
-          setState(() {
-            _allAudio[idx] = MediaItem(
-              title: meta.title ?? item.title,
-              path: item.path,
-              album: meta.album ?? item.album,
-              artist: meta.artist,
-              albumArt: meta.albumArtPath,
-            );
-          });
+      // تحديث القائمة دفعة واحدة
+      final updated = <MediaItem>[];
+      for (final item in _allAudio) {
+        final meta = results[item.path];
+        if (meta != null &&
+            (meta.albumArtPath != null ||
+                meta.title != null ||
+                meta.album != null)) {
+          updated.add(MediaItem(
+            title: meta.title ?? item.title,
+            path: item.path,
+            album: meta.album ?? item.album,
+            artist: meta.artist,
+            albumArt: meta.albumArtPath ?? item.albumArt,
+          ));
+        } else {
+          updated.add(item);
         }
-
-        processed++;
-
-        // تحديث كل 5 صور لعرض التقدم
-        if (processed % 5 == 0) {
-          if (mounted) setState(() {});
-        }
-      } catch (e) {
-        debugPrint('Metadata extract error: $e');
       }
-    }
 
-    if (mounted) {
+      setState(() {
+        _allAudio = updated;
+      });
       _sortAudio(_sortBy);
-      debugPrint('✅ Extracted metadata for $processed tracks');
+      debugPrint('✅ Metadata extracted for ${results.length} tracks');
+    } catch (e) {
+      debugPrint('Metadata batch error: $e');
     }
   }
 

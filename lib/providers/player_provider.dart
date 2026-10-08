@@ -97,30 +97,69 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
-    // تهيئة المعادل الصوتي
-    await EqualizerService.init();
+    // ⚡ تخطيطات أولية سريعة — بدون انتظار الشبكة
+    try {
+      // 1) قيم افتراضية فورية
+      playbackSpeed = 1.0;
+      favorites = {};
 
-    playbackSpeed = await PlaybackStateService.loadSpeed();
-    await audioPlayer.setSpeed(playbackSpeed);
+      // 2) مراقبة الأحداث
+      audioPlayer.playerStateStream.listen((state) {
+        if (state.processingState == ProcessingState.completed) {
+          _onAudioComplete();
+        }
+        _syncWidget();
+      });
 
-    favorites = await FavoritesService.load();
+      audioPlayer.currentIndexStream.listen((_) => _syncWidget());
 
-    audioPlayer.playerStateStream.listen((state) {
-      if (state.processingState == ProcessingState.completed) {
-        _onAudioComplete();
+      // 3) حفظ الموضع كل 15 ثانية (بدلاً من 5 لتخفيف الحمل)
+      _positionSaveTimer = Timer.periodic(
+        const Duration(seconds: 15),
+        (_) => _saveCurrentPosition(),
+      );
+
+      notifyListeners();
+
+      // 4) تحميلات ثقيلة في الخلفية (بدون انتظار)
+      _loadHeavyInBackground();
+    } catch (e) {
+      debugPrint('PlayerProvider init error: $e');
+      notifyListeners();
+    }
+  }
+
+  /// تحميلات ثقيلة (في الخلفية)
+  Future<void> _loadHeavyInBackground() async {
+    try {
+      // سرعة التشغيل
+      try {
+        playbackSpeed = await PlaybackStateService.loadSpeed();
+        await audioPlayer.setSpeed(playbackSpeed);
+        notifyListeners();
+      } catch (e) {
+        debugPrint('Load speed error: $e');
       }
-      _syncWidget();
-    });
 
-    audioPlayer.currentIndexStream.listen((_) {
-      _syncWidget();
-    });
+      // المفضلة
+      try {
+        favorites = await FavoritesService.load();
+        notifyListeners();
+      } catch (e) {
+        debugPrint('Load favorites error: $e');
+      }
 
-    _positionSaveTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      _saveCurrentPosition();
-    });
+      // المعادل (في الخلفية)
+      try {
+        await EqualizerService.init();
+      } catch (e) {
+        debugPrint('Equalizer init error: $e');
+      }
 
-    notifyListeners();
+      debugPrint('✅ PlayerProvider heavy loads done');
+    } catch (e) {
+      debugPrint('_loadHeavyInBackground error: $e');
+    }
   }
 
   /// مسح رسالة الخطأ

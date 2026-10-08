@@ -1,18 +1,18 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 import 'package:provider/provider.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'providers/auth_provider.dart';
 import 'providers/language_provider.dart';
 import 'providers/player_provider.dart';
 import 'providers/theme_provider.dart';
-import 'screens/login_screen.dart';
+import 'screens/splash_screen.dart';
 import 'services/supabase_service.dart';
 import 'services/widget_service.dart';
 import 'theme/app_theme.dart';
-import 'widgets/mini_player.dart';
 
-Future<void> main() async {
+void main() {
+  // ═══ 1) تهيئة Flutter فوراً ═══
   WidgetsFlutterBinding.ensureInitialized();
 
   FlutterError.onError = (details) {
@@ -20,34 +20,56 @@ Future<void> main() async {
     debugPrint('FlutterError: ${details.exception}');
   };
 
-  // تهيئة Widgets
-  await WidgetService.initialize();
+  // ═══ 2) ابدأ التطبيق فوراً (بدون انتظار) ═══
+  runApp(const MediaCenterApp());
 
+  // ═══ 3) تهيئة الخدمات في الخلفية ═══
+  _bootstrapServices();
+}
+
+/// تهيئة جميع الخدمات في الخلفية (بدون حجب UI)
+Future<void> _bootstrapServices() async {
+  // ─── 1) Widgets (سريع) ───
+  try {
+    await WidgetService.initialize();
+  } catch (e) {
+    debugPrint('Widget init error: $e');
+  }
+
+  // ─── 2) Audio Background ───
   try {
     await JustAudioBackground.init(
       androidNotificationChannelId: 'com.mediahub.mediacenter.channel.audio',
-      androidNotificationChannelName: 'Media Center Playback',
+      androidNotificationChannelName: 'AR مشغل موسيقى & فيديوهات',
+      androidNotificationChannelDescription: 'تشغيل الصوتيات في الخلفية',
       androidNotificationOngoing: true,
-      androidStopForegroundOnPause: true,
-      preloadArtwork: false,
+      androidStopForegroundOnPause: false,
+      preloadArtwork: false, // ⚡ لا نُحمّل الصور مسبقاً (يبطئ البدء)
+      androidShowNotificationBadge: true,
+      fastForwardInterval: const Duration(seconds: 30),
+      rewindInterval: const Duration(seconds: 10),
     );
-    debugPrint('✅ Background audio service initialized');
+    debugPrint('✅ Background audio ready');
   } catch (e) {
-    debugPrint('⚠️ Background audio init failed: $e');
+    debugPrint('⚠️ Background audio init error: $e');
   }
 
-  runZonedGuarded(() async {
-    try {
-      await SupabaseService.initialize();
-      runApp(const MediaCenterApp());
-    } catch (e, st) {
-      debugPrint('FATAL: $e\n$st');
-      runApp(ErrorApp(error: e.toString(), stack: st.toString()));
-    }
-  }, (error, stack) {
-    debugPrint('Zone error: $error\n$stack');
-  });
+  // ─── 3) Supabase (قد يأخذ وقتاً بسبب الشبكة) ───
+  try {
+    await SupabaseService.initialize();
+    debugPrint('✅ Supabase ready');
+    // إشعار الواجهة بأن التهيئة انتهت
+    _initializationDone.value = true;
+  } catch (e) {
+    debugPrint('⚠️ Supabase init error: $e');
+    // حتى لو فشل، نُظهر الواجهة
+    _initializationDone.value = true;
+  }
 }
+
+/// ValueNotifier يُخبر SplashScreen بأن التهيئة انتهت
+final ValueNotifier<bool> _initializationDone = ValueNotifier(false);
+ValueNotifier<bool> get initializationDone => _initializationDone;
 
 class MediaCenterApp extends StatelessWidget {
   const MediaCenterApp({super.key});
@@ -66,74 +88,11 @@ class MediaCenterApp extends StatelessWidget {
           return MaterialApp(
             title: 'AR مشغل موسيقى & فيديوهات',
             debugShowCheckedModeBanner: false,
-            themeMode: theme.mode,
-            theme: AppTheme.light(),
-            darkTheme: AppTheme.dark(),
+            theme: AppTheme.byType(theme.type),
             locale: lang.locale,
-            // 🔥 استخدام Navigator مع إضافة الـ MiniPlayer
-            builder: (context, child) {
-              return Stack(
-                children: [
-                  if (child != null) child,
-                  // MiniPlayer ثابت أسفل جميع الصفحات
-                  const Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: SafeArea(top: false, child: MiniPlayer()),
-                  ),
-                ],
-              );
-            },
-            home: const LoginScreen(),
+            home: const SplashScreen(),
           );
         },
-      ),
-    );
-  }
-}
-
-class ErrorApp extends StatelessWidget {
-  final String error;
-  final String stack;
-  const ErrorApp({super.key, required this.error, required this.stack});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        backgroundColor: const Color(0xFF1B1B2E),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.error_outline,
-                      color: Colors.redAccent, size: 60),
-                  const SizedBox(height: 16),
-                  const Text('حدث خطأ في التشغيل',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 20),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    color: Colors.black,
-                    child: SelectableText(error,
-                        style: const TextStyle(
-                            color: Colors.redAccent,
-                            fontSize: 12,
-                            fontFamily: 'monospace')),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }

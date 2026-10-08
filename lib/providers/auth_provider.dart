@@ -15,42 +15,91 @@ class AuthProvider extends ChangeNotifier {
   String? error;
 
   AuthProvider() {
-    _init();
+    // ⚡ تهيئة فورية من الذاكرة
+    _initFast();
+    // ثم مراقبة الشبكة في الخلفية
+    _initListeners();
   }
 
-  Future<void> _init() async {
+  /// ⚡ قراءة فورية (بدون شبكة)
+  void _initFast() {
     try {
+      if (!SupabaseService.isInitialized) {
+        isGuest = true;
+        initialized = true;
+        notifyListeners();
+        return;
+      }
+
       final session = SupabaseService.client.auth.currentSession;
       if (session != null) {
         isGuest = false;
-        await _loadProfile();
+        // بناء profile مؤقت من بيانات الجلسة (بدون شبكة)
+        final user = session.user;
+        profile = ProfileModel(
+          id: user.id,
+          email: user.email,
+          fullName: user.userMetadata?['full_name'] as String?,
+          avatarUrl: user.userMetadata?['avatar_url'] as String?,
+          role: 'user', // سيُحدَّث من الشبكة لاحقاً
+        );
+      } else {
+        isGuest = true;
       }
     } catch (e) {
-      debugPrint('AuthProvider init error: $e');
+      debugPrint('_initFast error: $e');
+      isGuest = true;
     }
-
     initialized = true;
     notifyListeners();
 
+    // 🔄 تحديث profile من الشبكة في الخلفية
+    if (!isGuest) {
+      _refreshFromNetwork();
+    }
+  }
+
+  /// 🔄 تحديث من الشبكة (في الخلفية)
+  Future<void> _refreshFromNetwork() async {
     try {
+      final fresh = await _auth.fetchProfile().timeout(
+        const Duration(seconds: 5),
+      );
+      if (fresh != null) {
+        profile = fresh;
+        isOffline = false;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Network refresh failed (offline?): $e');
+      isOffline = true;
+      notifyListeners();
+    }
+  }
+
+  /// 🎧 مراقبة تغييرات المصادقة
+  void _initListeners() {
+    try {
+      if (!SupabaseService.isInitialized) return;
+
       SupabaseService.client.auth.onAuthStateChange.listen(
         (data) async {
           try {
             if (data.session != null) {
               isGuest = false;
-              isOffline = false;
-              await _loadProfile();
+              notifyListeners();
+              await _refreshFromNetwork();
             } else {
               isGuest = true;
               profile = null;
+              notifyListeners();
             }
-            notifyListeners();
           } catch (e) {
             debugPrint('AuthState handler error: $e');
           }
         },
         onError: (error, stackTrace) {
-          debugPrint('⚠️ Auth stream error (offline): $error');
+          debugPrint('⚠️ Auth stream error: $error');
           isOffline = true;
           notifyListeners();
         },
@@ -58,17 +107,6 @@ class AuthProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('listen error: $e');
     }
-  }
-
-  Future<void> _loadProfile() async {
-    try {
-      profile = await _auth.fetchProfile();
-      isOffline = false;
-    } catch (e) {
-      debugPrint('loadProfile error: $e');
-      isOffline = true;
-    }
-    notifyListeners();
   }
 
   Future<bool> signInWithEmail(String email, String password) =>
@@ -80,7 +118,6 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> resetPassword(String email) =>
       _run(() => _auth.resetPassword(email));
 
-  /// 🔥 تحديث الملف الشخصي
   Future<bool> updateProfile({
     String? fullName,
     String? avatarUrl,
@@ -89,7 +126,7 @@ class AuthProvider extends ChangeNotifier {
       loading = true;
       notifyListeners();
       await _auth.updateProfile(fullName: fullName, avatarUrl: avatarUrl);
-      await _loadProfile();
+      await _refreshFromNetwork();
       loading = false;
       notifyListeners();
       return true;
@@ -117,7 +154,7 @@ class AuthProvider extends ChangeNotifier {
         }
       }
 
-      await _loadProfile();
+      await _refreshFromNetwork();
       loading = false;
       notifyListeners();
       return true;
@@ -128,7 +165,8 @@ class AuthProvider extends ChangeNotifier {
       final msg = e.toString();
       if (msg.contains('SocketException') ||
           msg.contains('Connection') ||
-          msg.contains('HandshakeException')) {
+          msg.contains('HandshakeException') ||
+          msg.contains('TimeoutException')) {
         error = 'لا يوجد اتصال بالإنترنت';
         isOffline = true;
       } else if (msg.contains('Invalid login credentials')) {

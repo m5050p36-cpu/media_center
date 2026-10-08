@@ -9,8 +9,10 @@ class SupabaseService {
   factory SupabaseService() => _instance;
 
   static SupabaseClient get client => Supabase.instance.client;
+  static bool _initialized = false;
+  static bool get isInitialized => _initialized;
 
-  /// تهيئة supabase_flutter — يحفظ الجلسة تلقائياً في SharedPreferences
+  /// ⚡ تهيئة سريعة — تحفظ الجلسة محلياً تلقائياً
   static Future<void> initialize() async {
     try {
       await Supabase.initialize(
@@ -20,21 +22,18 @@ class SupabaseService {
         authOptions: const FlutterAuthClientOptions(
           authFlowType: AuthFlowType.pkce,
           autoRefreshToken: true,
-          // ملاحظة: supabase_flutter يحفظ الجلسة تلقائياً — لا حاجة لـ persistSession
         ),
       );
-      debugPrint('✅ Supabase initialized with persistent session');
+      _initialized = true;
+      debugPrint('✅ Supabase initialized');
 
-      // التحقق من الجلسة المحلية (بدون محاولة تحديث فوري)
       final user = client.auth.currentUser;
       if (user != null) {
-        debugPrint('✅ Session restored (offline-ready): ${user.email}');
-      } else {
-        debugPrint('ℹ️ No session — user is guest');
+        debugPrint('✅ Offline session: ${user.email}');
       }
     } catch (e, st) {
       debugPrint('❌ Supabase init failed: $e\n$st');
-      rethrow;
+      // لا نُعيد رمي الخطأ — التطبيق يعمل offline
     }
   }
 
@@ -53,7 +52,8 @@ class SupabaseService {
           .from('banners')
           .select()
           .eq('is_active', true)
-          .order('display_order', ascending: true);
+          .order('display_order', ascending: true)
+          .timeout(const Duration(seconds: 5));
       return (data as List).map((e) => BannerModel.fromMap(e)).toList();
     } catch (e) {
       debugPrint('fetchActiveBanners error: $e');
