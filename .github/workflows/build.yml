@@ -1,12 +1,15 @@
 name: Build & Release APK
 
+# ═══════════════════════════════════════════════════
+# ⚡ البناء يعمل تلقائياً عند push فقط
+# ═══════════════════════════════════════════════════
 on:
   push:
     branches: [ main, master ]
     tags: [ 'v*' ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:
+
+# ✅ لا يوجد workflow_dispatch — لمنع البناء المكرر
+# لبناء يدوي: أضف مسافة في README.md ثم push
 
 permissions:
   contents: write
@@ -14,6 +17,7 @@ permissions:
 env:
   FLUTTER_CHANNEL: 'stable'
   JAVA_VERSION: '17'
+  APP_NAME_AR: 'AR-Music-Video'
 
 jobs:
   build:
@@ -38,13 +42,16 @@ jobs:
           cache: true
 
       - name: ℹ️ Versions
-        run: flutter --version
+        run: |
+          flutter --version
+          java -version
 
       - name: 💾 Cache pub packages
         uses: actions/cache@v4
         with:
           path: ~/.pub-cache
           key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-pub-
 
       - name: 📦 Get dependencies
         run: flutter pub get
@@ -62,6 +69,9 @@ jobs:
             "platforms;android-36" \
             "build-tools;34.0.0" || true
 
+      # ═══════════════════════════════════════════════════
+      # استعادة Keystore
+      # ═══════════════════════════════════════════════════
       - name: 🔐 Restore Keystore
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -78,8 +88,12 @@ jobs:
           printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=%s\n' \
             "$STORE_PASS" "$KEY_PASS" "$KEY_ALIAS" "keys/release-key.jks" \
             > android/key.properties
-          keytool -list -keystore android/keys/release-key.jks -storepass "$STORE_PASS"
+          keytool -list -keystore android/keys/release-key.jks -storepass "$STORE_PASS" >/dev/null
+          echo "✅ Keystore ready"
 
+      # ═══════════════════════════════════════════════════
+      # البناء
+      # ═══════════════════════════════════════════════════
       - name: 🔨 Build Release APK
         run: |
           flutter build apk --release \
@@ -87,14 +101,52 @@ jobs:
             --no-tree-shake-icons \
             --android-skip-build-dependency-validation
 
-      - name: 📤 Upload APK
+      # ═══════════════════════════════════════════════════
+      # إعادة تسمية APK ليطابق اسم التطبيق
+      # ═══════════════════════════════════════════════════
+      - name: 🏷️ Rename APK
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          BUILD_NUM=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f2)
+          mkdir -p artifacts
+
+          # اسم APK = اسم التطبيق
+          APK_NAME="${APP_NAME_AR}-v${VERSION}-build${BUILD_NUM}-arm64.apk"
+
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             "artifacts/${APK_NAME}"
+
+          # نسخة باسم ثابت (للتحميل المباشر)
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             "artifacts/${APP_NAME_AR}-latest.apk"
+
+          echo "════════════════════════════════════"
+          echo "📦 APK files created:"
+          ls -lh artifacts/
+          echo "════════════════════════════════════"
+
+      # ═══════════════════════════════════════════════════
+      # رفع الـ Artifacts
+      # ═══════════════════════════════════════════════════
+      - name: 📤 Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: media-center-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: AR-Music-Video-APK
+          path: artifacts/*.apk
           retention-days: 30
 
-      - name: 🧹 Cleanup
+      # ═══════════════════════════════════════════════════
+      # إنشاء Release عند وجود Tag
+      # ═══════════════════════════════════════════════════
+      - name: 🚀 Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.apk
+          generate_release_notes: true
+
+      - name: 🧹 Cleanup Secrets
         if: always()
         run: |
-          rm -f android/keys/release-key.jks android/key.properties
+          rm -f android/keys/release-key.jks
+          rm -f android/key.properties
