@@ -2,11 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
 class EqualizerService {
-  /// الـ Equalizer ننشئه هنا ويُمرَّر إلى AudioPlayer عند الإنشاء
-  static final AndroidEqualizer equalizer = AndroidEqualizer();
-
   static bool _enabled = false;
   static String _preset = 'normal';
+  static bool _available = false;
+  static bool _initialized = false;
 
   static const List<Map<String, dynamic>> presets = [
     {'name': 'normal', 'label': 'عادي', 'gains': [0.0, 0.0, 0.0, 0.0, 0.0]},
@@ -20,71 +19,67 @@ class EqualizerService {
   ];
 
   static bool get enabled => _enabled;
+  static bool get available => _available;
+  static bool get initialized => _initialized;
   static String get preset => _preset;
 
-  /// تهيئة (يجب استدعاؤها بعد إنشاء AudioPlayer)
-  static Future<void> init() async {
-    try {
-      final params = await equalizer.parameters;
-      debugPrint('✅ Equalizer ready: ${params.bands.length} bands');
-    } catch (e) {
-      debugPrint('⚠️ Equalizer init error: $e');
-    }
-  }
+  /// فحص توفّر المعادل على الجهاز
+  static Future<bool> init() async {
+    if (_initialized) return _available;
+    _initialized = true;
 
-  /// تفعيل/تعطيل
-  static Future<void> setEnabled(bool value) async {
-    _enabled = value;
     try {
-      await equalizer.setEnabled(value);
-    } catch (e) {
-      debugPrint('setEnabled error: $e');
-    }
-  }
-
-  /// تطبيق preset
-  static Future<void> applyPreset(String name) async {
-    try {
-      final p = presets.firstWhere(
-        (e) => e['name'] == name,
-        orElse: () => presets.first,
-      );
-      final gains = (p['gains'] as List).cast<double>();
-      final params = await equalizer.parameters;
+      // إنشاء Equalizer جديد للفحص فقط
+      final eq = AndroidEqualizer();
+      final params = await eq.parameters.timeout(const Duration(seconds: 3));
       final bands = params.bands;
 
-      for (int i = 0; i < bands.length && i < gains.length; i++) {
-        bands[i].setGain(gains[i]);
+      if (bands.isEmpty) {
+        _available = false;
+        return false;
       }
 
-      _preset = name;
-      _enabled = true;
-      await equalizer.setEnabled(true);
-      debugPrint('✅ Equalizer preset: $name');
+      _available = true;
+      debugPrint('✅ Equalizer available: ${bands.length} bands');
+      return true;
     } catch (e) {
-      debugPrint('applyPreset error: $e');
+      debugPrint('⚠️ Equalizer not available: $e');
+      _available = false;
+      return false;
     }
   }
 
-  /// تطبيق قيمة يدوية
+  /// تفعيل/تعطيل — لا يعمل حالياً بدون ربط بالمشغل
+  static Future<void> setEnabled(bool value) async {
+    _enabled = value;
+    debugPrint('Equalizer enabled: $value (requires pipeline binding)');
+  }
+
+  /// تطبيق preset — لا يعمل حالياً
+  static Future<void> applyPreset(String name) async {
+    _preset = name;
+    debugPrint('Equalizer preset: $name (requires pipeline binding)');
+  }
+
+  /// تطبيق قيمة يدوية — لا يعمل حالياً
   static Future<void> setBandGain(int bandIndex, double gain) async {
-    try {
-      final params = await equalizer.parameters;
-      if (bandIndex < 0 || bandIndex >= params.bands.length) return;
-      params.bands[bandIndex].setGain(gain);
-      _preset = 'custom';
-    } catch (e) {
-      debugPrint('setBandGain error: $e');
-    }
+    _preset = 'custom';
   }
 
   /// عدد النطاقات
   static Future<int> bandCount() async {
+    if (!_available) return 5; // افتراضي
     try {
-      final params = await equalizer.parameters;
+      final eq = AndroidEqualizer();
+      final params = await eq.parameters;
       return params.bands.length;
     } catch (_) {
       return 5;
     }
+  }
+
+  /// إعادة الضبط
+  static Future<void> reset() async {
+    _preset = 'normal';
   }
 }

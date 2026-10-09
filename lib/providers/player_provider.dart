@@ -46,11 +46,8 @@ class MediaItem {
 
 class PlayerProvider extends ChangeNotifier {
   // ═══════════ Audio ═══════════
-  final AudioPlayer audioPlayer = AudioPlayer(
-    audioPipeline: AudioPipeline(
-      androidAudioEffects: [EqualizerService.equalizer],
-    ),
-  );
+  /// ✅ إنشاء المشغل بدون audioPipeline — سنضيف المعادل لاحقاً إذا دعمه الجهاز
+  final AudioPlayer audioPlayer = AudioPlayer();
 
   List<MediaItem> audioQueue = [];
   List<MediaItem> originalAudioOrder = [];
@@ -113,12 +110,10 @@ class PlayerProvider extends ChangeNotifier {
       audioPlayer.playerStateStream.listen((state) {
         if (_disposed) return;
 
-        // ✅ فقط عند الانتهاء
         if (state.processingState == ProcessingState.completed) {
           _onAudioComplete();
         }
 
-        // ✅ Throttled: فقط عند تغير حالة التشغيل
         if (state.playing != _wasPlaying) {
           _wasPlaying = state.playing;
           _syncWidgetThrottled();
@@ -130,7 +125,6 @@ class PlayerProvider extends ChangeNotifier {
         _syncWidgetThrottled();
       });
 
-      // ✅ حفظ الموضع كل 30 ثانية
       _positionSaveTimer = Timer.periodic(
         const Duration(seconds: 30),
         (_) => _saveCurrentPosition(),
@@ -138,7 +132,6 @@ class PlayerProvider extends ChangeNotifier {
 
       if (!_disposed) notifyListeners();
 
-      // ─── تحميلات ثقيلة في الخلفية ───
       _loadHeavyInBackground();
     } catch (e) {
       debugPrint('PlayerProvider init error: $e');
@@ -165,11 +158,16 @@ class PlayerProvider extends ChangeNotifier {
         debugPrint('Load favorites error: $e');
       }
 
-      // المعادل
+      // ═══ المعادل الصوتي — فحص فقط (بدون setAudioPipeline) ═══
       try {
-        await EqualizerService.init();
+        final eqAvailable = await EqualizerService.init();
+        if (eqAvailable) {
+          debugPrint('✅ Equalizer detected (device supports it)');
+        } else {
+          debugPrint('ℹ️ Equalizer not supported — player works without it');
+        }
       } catch (e) {
-        debugPrint('Equalizer init error: $e');
+        debugPrint('⚠️ Equalizer check error: $e');
       }
 
       debugPrint('✅ PlayerProvider heavy loads done');
@@ -564,7 +562,7 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   // ═══════════════════════════════════════════════
-  // 🎬 Video — محسّن لجودة الأداء
+  // 🎬 Video — محسّن
   // ═══════════════════════════════════════════════
   VideoPlayerController? videoController;
   List<MediaItem> videoQueue = [];
@@ -572,10 +570,7 @@ class PlayerProvider extends ChangeNotifier {
   bool videoLoop = false;
   PlayOrder videoOrder = PlayOrder.forward;
 
-  /// ✅ حماية من الاستدعاء المتكرر
   bool _isVideoTransitioning = false;
-
-  /// ✅ Throttle لمراقب الفيديو
   DateTime _lastVideoCheck = DateTime.fromMillisecondsSinceEpoch(0);
 
   MediaItem? get currentVideo =>
@@ -593,18 +588,12 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> _playCurrentVideo() async {
     if (videoQueue.isEmpty || _disposed) return;
 
-    // ✅ حماية من التنفيذ المتوازي
-    if (_isVideoTransitioning) {
-      debugPrint('⚠️ Video transition already in progress');
-      return;
-    }
+    if (_isVideoTransitioning) return;
     _isVideoTransitioning = true;
 
     try {
-      // ─── 1) احفظ المرجع القديم ───
       final oldController = videoController;
 
-      // ─── 2) أنشئ الجديد أولاً ───
       final newController = VideoPlayerController.file(
         File(videoQueue[videoIndex].path),
         videoPlayerOptions: VideoPlayerOptions(
@@ -613,20 +602,15 @@ class PlayerProvider extends ChangeNotifier {
         ),
       );
 
-      // ─── 3) هيّئه ───
       await newController.initialize();
 
-      // ─── 4) بدّل المراجع ───
       videoController = newController;
       await newController.setLooping(videoLoop);
 
-      // ─── 5) أضف المراقب ───
       newController.addListener(_onVideoTick);
 
-      // ─── 6) شغّل ───
       await newController.play();
 
-      // ─── 7) تخلّص من القديم ───
       if (oldController != null) {
         try {
           oldController.removeListener(_onVideoTick);
@@ -648,26 +632,20 @@ class PlayerProvider extends ChangeNotifier {
     }
   }
 
-  /// ✅ مراقب فيديو محسّن — Throttled
   void _onVideoTick() {
     final c = videoController;
     if (c == null || _disposed) return;
 
-    // ─── Throttle: مرة كل 500ms ───
     final now = DateTime.now();
     if (now.difference(_lastVideoCheck).inMilliseconds < 500) return;
     _lastVideoCheck = now;
 
-    // ─── لا شيء إذا الفيديو لم ينتهِ ───
     final value = c.value;
     if (!value.isInitialized || value.duration <= Duration.zero) return;
     if (value.position < value.duration) return;
 
-    // ─── حماية من الاستدعاء المتكرر ───
     if (_isVideoTransitioning) return;
-
-    // ─── لووب أو التالي ───
-    if (videoLoop) return; // setLooping يتولى الأمر
+    if (videoLoop) return;
 
     nextVideo(auto: true);
   }
