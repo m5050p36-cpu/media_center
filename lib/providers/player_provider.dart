@@ -7,8 +7,8 @@ import 'package:just_audio_background/just_audio_background.dart' as jab;
 import 'package:video_player/video_player.dart';
 import '../services/favorites_service.dart';
 import '../services/playback_state_service.dart';
-import '../services/equalizer_service.dart';
 import '../services/widget_service.dart';
+import '../services/equalizer_service.dart';
 
 /// وضعيات تكرار الصوت
 enum AudioRepeatMode { none, once, twice, thrice, loopAll }
@@ -59,28 +59,33 @@ class PlayerProvider extends ChangeNotifier {
   PlayOrder audioOrder = PlayOrder.forward;
   int _repeatCounter = 0;
 
-  // ═══ آخر خطأ ═══
+  // ─── آخر خطأ ───
   String? lastError;
 
-  // ═══ المفضلة ═══
+  // ─── المفضلة ───
   Set<String> favorites = {};
 
-  // ═══ مؤقت النوم ═══
+  // ─── مؤقت النوم ───
   Timer? _sleepTimer;
   DateTime? _sleepEndTime;
   Duration? _remainingSleepTime;
 
-  // ═══ سرعة التشغيل ═══
+  // ─── سرعة التشغيل ───
   double playbackSpeed = 1.0;
 
-  // ═══ حفظ الموضع ═══
+  // ─── حفظ الموضع ───
   Timer? _positionSaveTimer;
 
-  // ═══ A-B Repeat ═══
+  // ─── A-B Repeat ───
   Duration? abStart;
   Duration? abEnd;
   bool abActive = false;
   Timer? _abCheckTimer;
+
+  // ─── Throttling & Flags ───
+  DateTime _lastWidgetSync = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _disposed = false;
+  bool _wasPlaying = false;
 
   MediaItem? get currentAudio =>
       audioQueue.isEmpty ? null : audioQueue[audioIndex];
@@ -96,47 +101,58 @@ class PlayerProvider extends ChangeNotifier {
     _init();
   }
 
+  // ═══════════════════════════════════════════════
+  // تهيئة سريعة + تحميلات خلفية
+  // ═══════════════════════════════════════════════
   Future<void> _init() async {
-    // ⚡ تخطيطات أولية سريعة — بدون انتظار الشبكة
     try {
-      // 1) قيم افتراضية فورية
       playbackSpeed = 1.0;
       favorites = {};
 
-      // 2) مراقبة الأحداث
+      // ─── استماع لحالة التشغيل ───
       audioPlayer.playerStateStream.listen((state) {
+        if (_disposed) return;
+
+        // ✅ فقط عند الانتهاء
         if (state.processingState == ProcessingState.completed) {
           _onAudioComplete();
         }
-        _syncWidget();
+
+        // ✅ Throttled: فقط عند تغير حالة التشغيل
+        if (state.playing != _wasPlaying) {
+          _wasPlaying = state.playing;
+          _syncWidgetThrottled();
+        }
       });
 
-      audioPlayer.currentIndexStream.listen((_) => _syncWidget());
+      audioPlayer.currentIndexStream.listen((_) {
+        if (_disposed) return;
+        _syncWidgetThrottled();
+      });
 
-      // 3) حفظ الموضع كل 15 ثانية (بدلاً من 5 لتخفيف الحمل)
+      // ✅ حفظ الموضع كل 30 ثانية
       _positionSaveTimer = Timer.periodic(
-        const Duration(seconds: 15),
+        const Duration(seconds: 30),
         (_) => _saveCurrentPosition(),
       );
 
-      notifyListeners();
+      if (!_disposed) notifyListeners();
 
-      // 4) تحميلات ثقيلة في الخلفية (بدون انتظار)
+      // ─── تحميلات ثقيلة في الخلفية ───
       _loadHeavyInBackground();
     } catch (e) {
       debugPrint('PlayerProvider init error: $e');
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
   }
 
-  /// تحميلات ثقيلة (في الخلفية)
   Future<void> _loadHeavyInBackground() async {
     try {
       // سرعة التشغيل
       try {
         playbackSpeed = await PlaybackStateService.loadSpeed();
         await audioPlayer.setSpeed(playbackSpeed);
-        notifyListeners();
+        if (!_disposed) notifyListeners();
       } catch (e) {
         debugPrint('Load speed error: $e');
       }
@@ -144,12 +160,12 @@ class PlayerProvider extends ChangeNotifier {
       // المفضلة
       try {
         favorites = await FavoritesService.load();
-        notifyListeners();
+        if (!_disposed) notifyListeners();
       } catch (e) {
         debugPrint('Load favorites error: $e');
       }
 
-      // المعادل (في الخلفية)
+      // المعادل
       try {
         await EqualizerService.init();
       } catch (e) {
@@ -162,10 +178,34 @@ class PlayerProvider extends ChangeNotifier {
     }
   }
 
-  /// مسح رسالة الخطأ
+  // ═══════════════════════════════════════════════
+  // 🐢 Throttled Widget sync — مرة كل 3 ثوانٍ
+  // ═══════════════════════════════════════════════
+  void _syncWidgetThrottled() {
+    final now = DateTime.now();
+    if (now.difference(_lastWidgetSync).inSeconds < 3) return;
+    _lastWidgetSync = now;
+    _syncWidgetAsync();
+  }
+
+  Future<void> _syncWidgetAsync() async {
+    try {
+      final current = currentAudio;
+      if (current == null) {
+        await WidgetService.clear();
+        return;
+      }
+      await WidgetService.updateWidget(
+        title: current.title,
+        artist: current.album ?? 'AR Player',
+        isPlaying: audioPlayer.playing,
+      );
+    } catch (_) {}
+  }
+
   void clearError() {
     lastError = null;
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   // ═══════════════════════════════════════════════
@@ -173,14 +213,8 @@ class PlayerProvider extends ChangeNotifier {
   // ═══════════════════════════════════════════════
   Future<void> loadAudioQueue(List<MediaItem> items,
       {int startIndex = 0}) async {
-    if (items.isEmpty) {
-      debugPrint('⚠️ Empty queue');
-      return;
-    }
-
-    if (startIndex < 0 || startIndex >= items.length) {
-      startIndex = 0;
-    }
+    if (items.isEmpty) return;
+    if (startIndex < 0 || startIndex >= items.length) startIndex = 0;
 
     try {
       audioQueue = List.from(items);
@@ -188,15 +222,12 @@ class PlayerProvider extends ChangeNotifier {
       audioIndex = startIndex;
       _repeatCounter = 0;
       lastError = null;
-      notifyListeners();
-
-      debugPrint('📂 Loading queue: ${items.length} items, start=$startIndex');
+      if (!_disposed) notifyListeners();
 
       final firstFile = File(items[startIndex].path);
       if (!await firstFile.exists()) {
         lastError = 'الملف غير موجود: ${items[startIndex].title}';
-        debugPrint('❌ File not found: ${items[startIndex].path}');
-        notifyListeners();
+        if (!_disposed) notifyListeners();
         return;
       }
 
@@ -209,16 +240,12 @@ class PlayerProvider extends ChangeNotifier {
               id: item.path,
               title: item.title,
               album: item.album ?? 'Media Center',
-              artUri: Uri.parse(
-                  'https://qoarusrrbarbqhstqmae.supabase.co/storage/v1/object/public/banners/default.png'),
             ),
           ),
         );
       }
 
       final playlist = ConcatenatingAudioSource(children: sources);
-      debugPrint('📋 Playlist created with ${sources.length} sources');
-
       await audioPlayer.setAudioSource(playlist);
       await audioPlayer.seek(Duration.zero, index: startIndex);
       await audioPlayer.setSpeed(playbackSpeed);
@@ -229,11 +256,11 @@ class PlayerProvider extends ChangeNotifier {
       debugPrint('❌ loadAudioQueue error: $e\n$st');
     }
 
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   // ═══════════════════════════════════════════════
-  // تشغيل أغنية واحدة (fallback)
+  // Fallback: تشغيل أغنية واحدة
   // ═══════════════════════════════════════════════
   Future<void> playSingle(MediaItem item,
       {List<MediaItem>? queue, int? index}) async {
@@ -241,15 +268,12 @@ class PlayerProvider extends ChangeNotifier {
       if (queue != null) audioQueue = List.from(queue);
       if (index != null) audioIndex = index;
       lastError = null;
-      notifyListeners();
-
-      debugPrint('🎵 playSingle: ${item.title}');
+      if (!_disposed) notifyListeners();
 
       final file = File(item.path);
       if (!await file.exists()) {
         lastError = 'الملف غير موجود';
-        debugPrint('❌ File not found');
-        notifyListeners();
+        if (!_disposed) notifyListeners();
         return;
       }
 
@@ -265,29 +289,96 @@ class PlayerProvider extends ChangeNotifier {
       );
       await audioPlayer.setSpeed(playbackSpeed);
       await audioPlayer.play();
-      debugPrint('▶️ Playing single: ${item.title}');
     } catch (e, st) {
       lastError = 'فشل: $e';
       debugPrint('❌ playSingle error: $e\n$st');
     }
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
-  Future<void> _syncWidget() async {
+  // ═══════════════════════════════════════════════
+  // إيقاف نهائي + مسح قائمة التشغيل
+  // ═══════════════════════════════════════════════
+  Future<void> stopAndClear() async {
     try {
-      final current = currentAudio;
-      if (current == null) {
-        await WidgetService.clear();
-        return;
-      }
-      await WidgetService.updateWidget(
-        title: current.title,
-        artist: current.album ?? 'AR Player',
-        isPlaying: audioPlayer.playing,
-      );
-    } catch (_) {}
+      await audioPlayer.stop();
+      audioQueue.clear();
+      originalAudioOrder.clear();
+      audioIndex = 0;
+      _repeatCounter = 0;
+      lastError = null;
+      cancelSleepTimer();
+    } catch (e) {
+      debugPrint('stopAndClear error: $e');
+    }
+    if (!_disposed) notifyListeners();
   }
 
+  // ═══════════════════════════════════════════════
+  // A-B Repeat
+  // ═══════════════════════════════════════════════
+  void setABStart() {
+    abStart = audioPlayer.position;
+    if (abEnd != null && abEnd! <= abStart!) abEnd = null;
+    if (!_disposed) notifyListeners();
+  }
+
+  void setABEnd() {
+    abEnd = audioPlayer.position;
+    if (abStart != null && abEnd! <= abStart!) abStart = null;
+    if (!_disposed) notifyListeners();
+  }
+
+  void toggleAB() {
+    if (abStart == null || abEnd == null) return;
+    abActive = !abActive;
+
+    if (abActive) {
+      _abCheckTimer?.cancel();
+      _abCheckTimer = Timer.periodic(
+        const Duration(milliseconds: 300),
+        (_) {
+          if (!abActive || abStart == null || abEnd == null || _disposed) {
+            return;
+          }
+          final pos = audioPlayer.position;
+          if (pos >= abEnd!) {
+            audioPlayer.seek(abStart!);
+          }
+        },
+      );
+    } else {
+      _abCheckTimer?.cancel();
+      _abCheckTimer = null;
+    }
+    if (!_disposed) notifyListeners();
+  }
+
+  void clearAB() {
+    abStart = null;
+    abEnd = null;
+    abActive = false;
+    _abCheckTimer?.cancel();
+    _abCheckTimer = null;
+    if (!_disposed) notifyListeners();
+  }
+
+  String? get abStatus {
+    if (abStart == null && abEnd == null) return null;
+    if (abStart == null) return 'A: -- • B: ${_fmt(abEnd!)}';
+    if (abEnd == null) return 'A: ${_fmt(abStart!)} • B: --';
+    return 'A: ${_fmt(abStart!)} • B: ${_fmt(abEnd!)}${abActive ? " ●" : ""}';
+  }
+
+  String _fmt(Duration d) {
+    final m = d.inMinutes.toString().padLeft(2, '0');
+    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  // ═══════════════════════════════════════════════
+  // حفظ الموضع
+  // ═══════════════════════════════════════════════
   Future<void> _saveCurrentPosition() async {
     final current = currentAudio;
     if (current == null) return;
@@ -299,7 +390,11 @@ class PlayerProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
+  // ═══════════════════════════════════════════════
+  // عند انتهاء المسار
+  // ═══════════════════════════════════════════════
   Future<void> _onAudioComplete() async {
+    if (_disposed) return;
     switch (audioRepeat) {
       case AudioRepeatMode.once:
       case AudioRepeatMode.twice:
@@ -324,7 +419,7 @@ class PlayerProvider extends ChangeNotifier {
         }
         await audioPlayer.seek(Duration.zero, index: audioIndex);
         await audioPlayer.play();
-        notifyListeners();
+        if (!_disposed) notifyListeners();
         break;
       case AudioRepeatMode.none:
         await nextAudio(auto: true);
@@ -332,8 +427,11 @@ class PlayerProvider extends ChangeNotifier {
     }
   }
 
+  // ═══════════════════════════════════════════════
+  // التنقل
+  // ═══════════════════════════════════════════════
   Future<void> nextAudio({bool auto = false}) async {
-    if (audioQueue.isEmpty) return;
+    if (audioQueue.isEmpty || _disposed) return;
 
     int newIndex;
     if (audioOrder == PlayOrder.shuffle && !auto) {
@@ -353,11 +451,11 @@ class PlayerProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('nextAudio error: $e');
     }
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> previousAudio() async {
-    if (audioQueue.isEmpty) return;
+    if (audioQueue.isEmpty || _disposed) return;
     audioIndex = (audioIndex - 1 + audioQueue.length) % audioQueue.length;
     try {
       await audioPlayer.seek(Duration.zero, index: audioIndex);
@@ -365,7 +463,7 @@ class PlayerProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('previousAudio error: $e');
     }
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   int _randomIndex() {
@@ -384,84 +482,7 @@ class PlayerProvider extends ChangeNotifier {
     } else {
       await audioPlayer.play();
     }
-    notifyListeners();
-  }
-
-  /// ═══ إيقاف نهائي + مسح قائمة التشغيل ═══
-  Future<void> stopAndClear() async {
-    try {
-      await audioPlayer.stop();
-      audioQueue.clear();
-      originalAudioOrder.clear();
-      audioIndex = 0;
-      _repeatCounter = 0;
-      lastError = null;
-      cancelSleepTimer();
-      debugPrint('🛑 Player stopped and cleared');
-    } catch (e) {
-      debugPrint('stopAndClear error: $e');
-    }
-    notifyListeners();
-  }
-
-  // ═══════════════════════════════════════════════
-  // A-B Repeat
-  // ═══════════════════════════════════════════════
-  void setABStart() {
-    abStart = audioPlayer.position;
-    if (abEnd != null && abEnd! <= abStart!) abEnd = null;
-    notifyListeners();
-  }
-
-  void setABEnd() {
-    abEnd = audioPlayer.position;
-    if (abStart != null && abEnd! <= abStart!) abStart = null;
-    notifyListeners();
-  }
-
-  void toggleAB() {
-    if (abStart == null || abEnd == null) return;
-    abActive = !abActive;
-
-    if (abActive) {
-      _abCheckTimer?.cancel();
-      _abCheckTimer = Timer.periodic(
-        const Duration(milliseconds: 200),
-        (_) {
-          if (!abActive || abStart == null || abEnd == null) return;
-          final pos = audioPlayer.position;
-          if (pos >= abEnd!) {
-            audioPlayer.seek(abStart!);
-          }
-        },
-      );
-    } else {
-      _abCheckTimer?.cancel();
-      _abCheckTimer = null;
-    }
-    notifyListeners();
-  }
-
-  void clearAB() {
-    abStart = null;
-    abEnd = null;
-    abActive = false;
-    _abCheckTimer?.cancel();
-    _abCheckTimer = null;
-    notifyListeners();
-  }
-
-  String? get abStatus {
-    if (abStart == null && abEnd == null) return null;
-    if (abStart == null) return 'A: -- • B: ${_fmt(abEnd!)}';
-    if (abEnd == null) return 'A: ${_fmt(abStart!)} • B: --';
-    return 'A: ${_fmt(abStart!)} • B: ${_fmt(abEnd!)}${abActive ? " ●" : ""}';
-  }
-
-  String _fmt(Duration d) {
-    final m = d.inMinutes.toString().padLeft(2, '0');
-    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
-    return '$m:$s';
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> seek(Duration position) async {
@@ -471,19 +492,19 @@ class PlayerProvider extends ChangeNotifier {
   void setAudioRepeat(AudioRepeatMode mode) {
     audioRepeat = mode;
     _repeatCounter = 0;
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   void setAudioOrder(PlayOrder order) {
     audioOrder = order;
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> setPlaybackSpeed(double speed) async {
     playbackSpeed = speed;
     await audioPlayer.setSpeed(speed);
     await PlaybackStateService.saveSpeed(speed);
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> savePosition() async {
@@ -495,10 +516,13 @@ class PlayerProvider extends ChangeNotifier {
     );
   }
 
+  // ═══════════════════════════════════════════════
+  // المفضلة
+  // ═══════════════════════════════════════════════
   Future<bool> toggleFavorite(String path) async {
     final added = await FavoritesService.toggle(path);
     favorites = await FavoritesService.load();
-    notifyListeners();
+    if (!_disposed) notifyListeners();
     return added;
   }
 
@@ -507,19 +531,26 @@ class PlayerProvider extends ChangeNotifier {
   List<MediaItem> get favoriteTracks =>
       audioQueue.where((item) => favorites.contains(item.path)).toList();
 
+  // ═══════════════════════════════════════════════
+  // مؤقت النوم
+  // ═══════════════════════════════════════════════
   void startSleepTimer(Duration duration) {
     cancelSleepTimer();
     _sleepEndTime = DateTime.now().add(duration);
 
     _sleepTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_disposed) {
+        timer.cancel();
+        return;
+      }
       final remaining = _sleepEndTime!.difference(DateTime.now());
       if (remaining.isNegative || remaining.inSeconds <= 0) {
         cancelSleepTimer();
         audioPlayer.pause();
-        notifyListeners();
+        if (!_disposed) notifyListeners();
       } else {
         _remainingSleepTime = remaining;
-        notifyListeners();
+        if (!_disposed) notifyListeners();
       }
     });
   }
@@ -529,56 +560,122 @@ class PlayerProvider extends ChangeNotifier {
     _sleepTimer = null;
     _sleepEndTime = null;
     _remainingSleepTime = null;
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
-  // ═══════════ Video ═══════════
+  // ═══════════════════════════════════════════════
+  // 🎬 Video — محسّن لجودة الأداء
+  // ═══════════════════════════════════════════════
   VideoPlayerController? videoController;
   List<MediaItem> videoQueue = [];
   int videoIndex = 0;
   bool videoLoop = false;
   PlayOrder videoOrder = PlayOrder.forward;
 
+  /// ✅ حماية من الاستدعاء المتكرر
+  bool _isVideoTransitioning = false;
+
+  /// ✅ Throttle لمراقب الفيديو
+  DateTime _lastVideoCheck = DateTime.fromMillisecondsSinceEpoch(0);
+
   MediaItem? get currentVideo =>
       videoQueue.isEmpty ? null : videoQueue[videoIndex];
 
   Future<void> loadVideoQueue(List<MediaItem> items,
       {int startIndex = 0}) async {
+    if (items.isEmpty) return;
+    if (_disposed) return;
     videoQueue = items;
     videoIndex = startIndex;
     await _playCurrentVideo();
   }
 
   Future<void> _playCurrentVideo() async {
-    if (videoQueue.isEmpty) return;
-    await videoController?.dispose();
-    videoController = VideoPlayerController.file(
-      File(videoQueue[videoIndex].path),
-      videoPlayerOptions: VideoPlayerOptions(
-        allowBackgroundPlayback: true,
-        mixWithOthers: false,
-      ),
-    );
-    videoController!.addListener(_videoListener);
-    await videoController!.initialize();
-    await videoController!.setLooping(videoLoop);
-    await videoController!.play();
-    notifyListeners();
-  }
+    if (videoQueue.isEmpty || _disposed) return;
 
-  void _videoListener() {
-    final c = videoController;
-    if (c == null) return;
-    if (c.value.position >= c.value.duration &&
-        c.value.duration > Duration.zero) {
-      if (!videoLoop) {
-        nextVideo(auto: true);
+    // ✅ حماية من التنفيذ المتوازي
+    if (_isVideoTransitioning) {
+      debugPrint('⚠️ Video transition already in progress');
+      return;
+    }
+    _isVideoTransitioning = true;
+
+    try {
+      // ─── 1) احفظ المرجع القديم ───
+      final oldController = videoController;
+
+      // ─── 2) أنشئ الجديد أولاً ───
+      final newController = VideoPlayerController.file(
+        File(videoQueue[videoIndex].path),
+        videoPlayerOptions: VideoPlayerOptions(
+          allowBackgroundPlayback: true,
+          mixWithOthers: false,
+        ),
+      );
+
+      // ─── 3) هيّئه ───
+      await newController.initialize();
+
+      // ─── 4) بدّل المراجع ───
+      videoController = newController;
+      await newController.setLooping(videoLoop);
+
+      // ─── 5) أضف المراقب ───
+      newController.addListener(_onVideoTick);
+
+      // ─── 6) شغّل ───
+      await newController.play();
+
+      // ─── 7) تخلّص من القديم ───
+      if (oldController != null) {
+        try {
+          oldController.removeListener(_onVideoTick);
+          await oldController.pause();
+          await oldController.dispose();
+        } catch (e) {
+          debugPrint('⚠️ Old video dispose error: $e');
+        }
       }
+
+      debugPrint('▶️ Video playing: ${videoQueue[videoIndex].title}');
+      if (!_disposed) notifyListeners();
+    } catch (e, st) {
+      debugPrint('❌ _playCurrentVideo error: $e\n$st');
+      lastError = 'فشل تشغيل الفيديو: $e';
+      if (!_disposed) notifyListeners();
+    } finally {
+      _isVideoTransitioning = false;
     }
   }
 
+  /// ✅ مراقب فيديو محسّن — Throttled
+  void _onVideoTick() {
+    final c = videoController;
+    if (c == null || _disposed) return;
+
+    // ─── Throttle: مرة كل 500ms ───
+    final now = DateTime.now();
+    if (now.difference(_lastVideoCheck).inMilliseconds < 500) return;
+    _lastVideoCheck = now;
+
+    // ─── لا شيء إذا الفيديو لم ينتهِ ───
+    final value = c.value;
+    if (!value.isInitialized || value.duration <= Duration.zero) return;
+    if (value.position < value.duration) return;
+
+    // ─── حماية من الاستدعاء المتكرر ───
+    if (_isVideoTransitioning) return;
+
+    // ─── لووب أو التالي ───
+    if (videoLoop) return; // setLooping يتولى الأمر
+
+    nextVideo(auto: true);
+  }
+
   Future<void> nextVideo({bool auto = false}) async {
-    if (videoQueue.isEmpty) return;
+    if (videoQueue.isEmpty || _disposed) return;
+    if (_isVideoTransitioning) return;
+
     if (videoOrder == PlayOrder.shuffle) {
       videoIndex = _randomIndex();
     } else if (videoOrder == PlayOrder.reverse) {
@@ -590,20 +687,21 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> previousVideo() async {
-    if (videoQueue.isEmpty) return;
+    if (videoQueue.isEmpty || _disposed) return;
+    if (_isVideoTransitioning) return;
     videoIndex = (videoIndex - 1 + videoQueue.length) % videoQueue.length;
     await _playCurrentVideo();
   }
 
   void setVideoOrder(PlayOrder order) {
     videoOrder = order;
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> setVideoLoop(bool loop) async {
     videoLoop = loop;
     await videoController?.setLooping(loop);
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> toggleVideoPlay() async {
@@ -614,16 +712,44 @@ class PlayerProvider extends ChangeNotifier {
     } else {
       await c.play();
     }
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
+  /// ✅ إيقاف الفيديو وتنظيفه
+  Future<void> stopVideo() async {
+    try {
+      final c = videoController;
+      if (c != null) {
+        c.removeListener(_onVideoTick);
+        await c.pause();
+        await c.dispose();
+        videoController = null;
+      }
+      if (!_disposed) notifyListeners();
+    } catch (e) {
+      debugPrint('stopVideo error: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════
+  // dispose شامل
+  // ═══════════════════════════════════════════════
   @override
   void dispose() {
+    _disposed = true;
     _positionSaveTimer?.cancel();
     _sleepTimer?.cancel();
     _abCheckTimer?.cancel();
-    audioPlayer.dispose();
-    videoController?.dispose();
+
+    try {
+      videoController?.removeListener(_onVideoTick);
+      videoController?.dispose();
+    } catch (_) {}
+
+    try {
+      audioPlayer.dispose();
+    } catch (_) {}
+
     super.dispose();
   }
 }
