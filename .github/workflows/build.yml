@@ -1,15 +1,9 @@
 name: Build & Release APK
 
-# ═══════════════════════════════════════════════════
-# ⚡ البناء يعمل تلقائياً عند push فقط
-# ═══════════════════════════════════════════════════
 on:
   push:
     branches: [ main, master ]
     tags: [ 'v*' ]
-
-# ✅ لا يوجد workflow_dispatch — لمنع البناء المكرر
-# لبناء يدوي: أضف مسافة في README.md ثم push
 
 permissions:
   contents: write
@@ -17,7 +11,7 @@ permissions:
 env:
   FLUTTER_CHANNEL: 'stable'
   JAVA_VERSION: '17'
-  APP_NAME_AR: 'AR-Music-Video'
+  APP_NAME: 'AR-Music-Video'
 
 jobs:
   build:
@@ -102,31 +96,27 @@ jobs:
             --android-skip-build-dependency-validation
 
       # ═══════════════════════════════════════════════════
-      # إعادة تسمية APK ليطابق اسم التطبيق
+      # نسخ APK واحد فقط باسم مطابق للتطبيق
       # ═══════════════════════════════════════════════════
-      - name: 🏷️ Rename APK
+      - name: 🏷️ Rename APK (single file)
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
           BUILD_NUM=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f2)
           mkdir -p artifacts
 
-          # اسم APK = اسم التطبيق
-          APK_NAME="${APP_NAME_AR}-v${VERSION}-build${BUILD_NUM}-arm64.apk"
+          # ✅ ملف واحد فقط
+          APK_NAME="${APP_NAME}-v${VERSION}.apk"
 
           cp build/app/outputs/flutter-apk/app-release.apk \
              "artifacts/${APK_NAME}"
 
-          # نسخة باسم ثابت (للتحميل المباشر)
-          cp build/app/outputs/flutter-apk/app-release.apk \
-             "artifacts/${APP_NAME_AR}-latest.apk"
-
           echo "════════════════════════════════════"
-          echo "📦 APK files created:"
+          echo "📦 APK created:"
           ls -lh artifacts/
           echo "════════════════════════════════════"
 
       # ═══════════════════════════════════════════════════
-      # رفع الـ Artifacts
+      # رفع الـ Artifact (ملف واحد)
       # ═══════════════════════════════════════════════════
       - name: 📤 Upload APK Artifact
         uses: actions/upload-artifact@v4
